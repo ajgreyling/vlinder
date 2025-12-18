@@ -115,6 +115,24 @@ await handler.executeAction('actionName', params: {...});
 - `lib/vlinder/workflow/` - Workflow engine and parsing
 - `lib/vlinder/rules/` - Rules engine and parsing
 
+## Testing & Validation
+
+### Test Scripts
+- Use `scripts/test_and_validate.sh` to run all tests and validations
+- Tests include Hetu script runtime validation using actual parsers
+- Validation checks cross-file references and structure
+
+### Test Files
+- `test/hetu_validator.dart` - Validates individual .ht file types
+- `test/integration_test.dart` - End-to-end app startup simulation
+- Tests use actual Vlinder parsers to ensure compatibility
+
+### Validation Patterns
+- Load .ht files from `sample_app/assets/` directory
+- Use actual parsers (SchemaLoader, UIParser, etc.) for validation
+- Check required fields, type consistency, and cross-file references
+- Verify workflow step references and rule condition syntax
+
 ## Best Practices
 
 1. **Always initialize Hetu** - Call `init()` immediately after creating Hetu instance
@@ -124,4 +142,6 @@ await handler.executeAction('actionName', params: {...});
 5. **Iterate with keys** - Use `for (final key in struct.keys)` not `forEach()`
 6. **Type check with Dart types** - Use `String`, `int`, `bool`, etc., not HT* wrapper types
 7. **Handle errors gracefully** - Wrap Hetu operations in try-catch blocks
+8. **Validate before deploy** - Run `test_and_validate.sh` before deploying .ht files
+9. **Test runtime behavior** - Use actual parsers in tests, not just syntax checking
 

@@ -297,3 +297,104 @@ Vlinder is:
 
 Together with **Project Posduif**, it enables robust mobile applications that work where traditional cloud-first apps fail.
 
+---
+
+## Development & Testing
+
+### Hetu Script API (0.4.2+1)
+
+Vlinder uses Hetu Script version 0.4.2+1 for runtime scripting. Key API patterns:
+
+**Initialization:**
+```dart
+final hetu = Hetu();
+hetu.init(); // REQUIRED - must be called before use
+```
+
+**Variable Access:**
+```dart
+final value = hetu.fetch('variableName'); // NOT getType()
+```
+
+**Function Invocation:**
+```dart
+final result = hetu.invoke('functionName', positionalArgs: [1, 2]); // NOT call()
+```
+
+**Type Handling:**
+- Hetu returns Dart native types (`String`, `int`, `bool`, `List`) - not `HTString`, `HTInt`, etc.
+- Only `HTStruct` exists as a wrapper type (import from `package:hetu_script/values.dart`)
+- Access HTStruct values: `struct[key]` or iterate with `for (final key in struct.keys)`
+
+See [HETU_API_ANALYSIS.md](HETU_API_ANALYSIS.md) for complete API documentation.
+
+### Testing & Validation
+
+Vlinder includes comprehensive testing and validation:
+
+**Run All Tests:**
+```bash
+./scripts/test_and_validate.sh
+```
+
+This script:
+1. **Flutter Analysis** - Validates Dart code compiles and passes static analysis
+2. **Flutter Tests** - Runs unit and integration tests including Hetu script validation
+3. **Hetu Script Validation** - Runtime validation of `.ht` files using actual parsers
+4. **Build Verification** - Confirms Flutter build system is ready
+
+**Hetu Script Validation:**
+- Validates syntax and structure of all `.ht` files
+- Checks cross-file references (e.g., Form entities match Schema names)
+- Verifies workflow step references are valid
+- Tests rule condition syntax can be evaluated
+
+**Test Files:**
+- `test/hetu_validator.dart` - Validates individual `.ht` file types
+- `test/integration_test.dart` - End-to-end app startup simulation
+
+### Development Scripts
+
+**Build Container App:**
+```bash
+./scripts/build_container.sh <ngrok_url> [android|ios]
+```
+
+**Start Development Server:**
+```bash
+./scripts/start_dev_server.sh
+```
+
+**Test & Validate:**
+```bash
+./scripts/test_and_validate.sh
+```
+
+---
+
+## Architecture Notes
+
+### Hetu Script Integration
+
+Vlinder parsers use Hetu Script to load and parse `.ht` files:
+
+- **SchemaLoader** - Parses `schema.ht` files into `EntitySchema` objects
+- **UIParser** - Parses `ui.ht` files into widget trees
+- **WorkflowParser** - Parses `workflows.ht` files into workflow definitions
+- **RulesParser** - Parses `rules.ht` files into rule definitions
+
+All parsers:
+- Require Hetu interpreter to be initialized (`hetu.init()`)
+- Use `interpreter.fetch()` to get variables after `eval()`
+- Iterate HTStruct using `for (final key in struct.keys)`
+- Return Dart native types, not Hetu wrapper types
+
+### Runtime Engine
+
+`VlinderRuntime` coordinates all components:
+- Automatically initializes Hetu interpreter
+- Registers SDK widgets with `WidgetRegistry`
+- Provides `loadUI()` to parse and build widget trees
+- Handles errors gracefully with fallback UI
+
+---

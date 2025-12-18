@@ -262,3 +262,25 @@ final validationRules = {
    - Validate required fields in schemas
    - Ensure all references are valid
 
+## Testing & Validation
+
+### Validation Script
+Run `./scripts/test_and_validate.sh` to validate all .ht files:
+- Syntax validation (can parse without errors)
+- Structure validation (required fields, correct types)
+- Runtime validation (actually loads and parses like the app would)
+- Cross-file reference validation
+
+### Validation Checks
+- Schema files: Required fields (`name`, `primaryKey`, `fields`), valid field types
+- UI files: `screen` variable exists, Form `entity` matches Schema names
+- Workflow files: `initialStep` exists, all `nextSteps` references valid
+- Rules files: Condition syntax can be evaluated, action syntax valid
+
+### Common Issues
+- Missing required fields in schemas or workflows
+- Form `entity` references non-existent schema
+- Workflow `screenId` doesn't match Screen `id`
+- Field names in widgets don't match schema field names
+- Rule conditions have syntax errors
+
