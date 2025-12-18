@@ -1,0 +1,71 @@
+// Example schema.ht - Entity Schema Definitions
+// This demonstrates how to define entity schemas for Drift binding
+
+// Customer entity schema
+final customerSchema = {
+  name: 'Customer',
+  primaryKey: 'id',
+  fields: {
+    id: {
+      type: 'integer',
+      required: true,
+    },
+    name: {
+      type: 'text',
+      required: true,
+      constraints: {
+        maxLength: 100,
+      },
+    },
+    age: {
+      type: 'integer',
+      required: false,
+      constraints: {
+        min: 0,
+        max: 150,
+      },
+    },
+    email: {
+      type: 'text',
+      required: false,
+      constraints: {
+        pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$',
+      },
+    },
+    createdAt: {
+      type: 'date',
+      required: true,
+    },
+  },
+};
+
+// Product entity schema
+final productSchema = {
+  name: 'Product',
+  primaryKey: 'id',
+  fields: {
+    id: {
+      type: 'integer',
+      required: true,
+    },
+    name: {
+      type: 'text',
+      required: true,
+      constraints: {
+        maxLength: 200,
+      },
+    },
+    price: {
+      type: 'decimal',
+      required: true,
+      constraints: {
+        min: 0,
+      },
+    },
+    description: {
+      type: 'text',
+      required: false,
+    },
+  },
+};
+

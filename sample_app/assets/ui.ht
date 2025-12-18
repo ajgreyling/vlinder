@@ -1,0 +1,48 @@
+// Sample UI definition - Customer Registration Form
+// Demonstrates form with validation, fields, and actions
+
+final screen = Screen(
+  id: 'customer_registration',
+  title: 'Customer Registration',
+  children: [
+    Form(
+      entity: 'Customer',
+      fields: [
+        TextField(
+          field: 'name',
+          label: 'Full Name',
+          required: true,
+          placeholder: 'Enter your full name',
+        ),
+        TextField(
+          field: 'email',
+          label: 'Email Address',
+          required: true,
+          placeholder: 'customer@example.com',
+        ),
+        NumberField(
+          field: 'age',
+          label: 'Age',
+          type: 'integer',
+          placeholder: 'Enter your age',
+        ),
+        TextField(
+          field: 'phone',
+          label: 'Phone Number',
+          placeholder: '+1234567890',
+        ),
+      ],
+    ),
+    ActionButton(
+      label: 'Register',
+      action: 'submit_customer',
+      style: 'primary',
+    ),
+    ActionButton(
+      label: 'Cancel',
+      action: 'cancel',
+      style: 'secondary',
+    ),
+  ],
+);
+

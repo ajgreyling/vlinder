@@ -1,0 +1,41 @@
+name: vlinder
+description: Lightweight, mobile runtime for Project Posduif - a scriptable Flutter app framework
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Hetu Script for runtime scripting
+  hetu_script: ^0.8.0
+  
+  # Drift for SQLite/ORM
+  drift: ^2.14.0
+  drift_flutter: ^2.14.0
+  
+  # SQLite driver
+  sqlite3_flutter_libs: ^0.5.18
+  path_provider: ^2.1.1
+  path: ^1.8.3
+  
+  # HTTP client for fetching assets
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  drift_dev: ^2.14.0
+  build_runner: ^2.4.7
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - example/ui.ht
+    - example/schema.ht
+
