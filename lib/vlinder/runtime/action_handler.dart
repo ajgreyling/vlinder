@@ -143,7 +143,15 @@ class ActionHandler {
                 if (queryResult != null) {
                   debugPrint('[ActionHandler] Loaded saved customer from database: $queryResult');
                   debugPrint('[ActionHandler] Navigating to saved customer view screen');
-                  _navigateToSavedCustomerScreen(queryResult);
+                  
+                  // Handle List results (findAll returns a List)
+                  dynamic customerData = queryResult;
+                  if (queryResult is List && queryResult.isNotEmpty) {
+                    customerData = queryResult[0];
+                    debugPrint('[ActionHandler] Extracted first item from list: $customerData');
+                  }
+                  
+                  _navigateToSavedCustomerScreen(customerData);
                   // Clear the query ID so we don't navigate again
                   interpreter.eval('_savedCustomerQueryId = null');
                 } else {

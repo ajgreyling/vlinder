@@ -48,6 +48,9 @@ if (value is HTInt) { ... }      // WRONG
 - Import `package:hetu_script/values.dart` when using `HTStruct`
 - Access values using `struct[key]` or iterate with `for (final key in struct.keys)`
 - Values stored in HTStruct are Dart native types
+- **CRITICAL**: HTStruct uses **string keys** for member access
+  - When storing data in HTStruct, convert numeric keys to strings: `"${key}"`
+  - When accessing data, use string keys: `struct["1"]` not `struct[1]`
 - Example:
 ```dart
 import 'package:hetu_script/values.dart';
@@ -58,9 +61,38 @@ if (value is HTStruct) {
     final val = value[key]; // Returns Dart native type
   }
   
-  // Direct access
+  // Direct access (use string keys)
   final name = value['name']; // String (Dart type)
   final age = value['age'];   // int (Dart type)
+  final result = value['1'];  // Access with string key
+}
+```
+
+### Converting HTStruct to Dart Types
+- **CRITICAL**: Always convert HTStruct to Dart types before passing to Dart APIs
+- Use `_convertHetuValueToDart()` helper function that handles HTStruct:
+```dart
+dynamic _convertHetuValueToDart(dynamic value) {
+  if (value is String || value is int || value is double || value is bool || value == null) {
+    return value;
+  } else if (value is List) {
+    return value.map((e) => _convertHetuValueToDart(e)).toList();
+  } else if (value is HTStruct) {
+    // Convert HTStruct to Map<String, dynamic>
+    final result = <String, dynamic>{};
+    for (final key in value.keys) {
+      result[key.toString()] = _convertHetuValueToDart(value[key]);
+    }
+    return result;
+  } else if (value is Map) {
+    final result = <String, dynamic>{};
+    for (final entry in value.entries) {
+      final key = entry.key.toString();
+      result[key] = _convertHetuValueToDart(entry.value);
+    }
+    return result;
+  }
+  return value.toString();
 }
 ```
 
@@ -195,6 +227,40 @@ fun submit_customer() {
 ```
 - All database functions use the **same interpreter instance** (shared via HetuInterpreterProvider)
 - Functions are registered in `ContainerAppShell._registerDatabaseFunctions()`
+
+### Database Operation Processing
+- **CRITICAL**: Operations queued from Hetu scripts are `HTStruct`, not `Map`
+- When processing operations in `ActionHandler._processDatabaseOperations()`, check for both `Map` and `HTStruct`:
+```dart
+if (operation is Map || operation is HTStruct) {
+  final opId = operation['id'];
+  final opType = operation['type']?.toString() ?? '';
+  // ... process operation
+}
+```
+- **CRITICAL**: Convert HTStruct operation data to Dart types before passing to database API:
+```dart
+final data = operation['data'];
+if (data != null) {
+  final dartData = _convertHetuValueToDart(data); // Converts HTStruct to Map
+  result = await databaseAPI!.save(entityName, dartData);
+}
+```
+- **CRITICAL**: Use explicit column names from schema in SQL queries, NOT `SELECT *`
+  - `SELECT *` causes generic column names (`column0`, `column1`, etc.) instead of field names
+  - Build column list from schema: `final columnNames = schema.fields.keys.toList();`
+  - Use: `SELECT ${columnNames.join(', ')} FROM $tableName`
+- **CRITICAL**: `findAll()` returns a `List`, not a single item
+  - When retrieving results via `getDbResult()`, check if result is a List and extract first item:
+```dart
+dynamic customerData = queryResult;
+if (queryResult is List && queryResult.isNotEmpty) {
+  customerData = queryResult[0];
+}
+```
+- **CRITICAL**: Store database results with string keys in `_dbResults` HTStruct
+  - Convert numeric operation IDs to strings: `"${entry.key}"` when building Hetu script
+  - Access results with string keys: `getDbResult(opId.toString())`
 
 ### Interpreter Instance Sharing
 - **CRITICAL**: Share a single Hetu interpreter instance across all components
@@ -364,6 +430,36 @@ void initState() {
 - Form widgets use `fields` array for child widgets, not `children`
 - The parser automatically handles this - `fields` become children
 - Empty `children` arrays on Form widgets are automatically skipped
+- **CRITICAL**: Form widgets must wrap **themselves** with `FormStateProvider`, not just their children
+  - This makes form state available to sibling widgets (like ActionButton)
+  - Wrap the form content in `build()` method:
+```dart
+@override
+Widget build(BuildContext context) {
+  final formStateToUse = widget.formState ?? _formState;
+  if (formStateToUse != null) {
+    return FormStateProvider(
+      formState: formStateToUse,
+      child: formContent, // Wrap form content, not just children
+    );
+  }
+  return formContent;
+}
+```
+- **CRITICAL**: Avoid `setState()` during build phase
+  - Use `WidgetsBinding.instance.addPostFrameCallback()` to defer setState calls:
+```dart
+onFormStateReady: (formState) {
+  // Defer setState to avoid calling during build
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted && _screenFormState != formState) {
+      setState(() {
+        _screenFormState = formState;
+      });
+    }
+  });
+}
+```
 
 ## Best Practices
 
@@ -389,4 +485,11 @@ void initState() {
 20. **Database operations are async** - Functions queue operations, results available via `getDbResult(opId)` after processing
 21. **actions.ht is required** - Must exist and be loaded for app initialization
 22. **Use actionContext in action functions** - Access form values via `actionContext.formValues` and validation via `actionContext.isValid`
+23. **Handle HTStruct in database operations** - Operations from Hetu are HTStruct, check for both Map and HTStruct when processing
+24. **Convert HTStruct to Dart types** - Always use `_convertHetuValueToDart()` before passing to database API
+25. **Use explicit column names** - Build column list from schema fields, don't use `SELECT *` (causes generic column names)
+26. **Handle List results from findAll** - `findAll()` returns List, extract first item if needed: `if (result is List && result.isNotEmpty) { result = result[0]; }`
+27. **Use string keys for HTStruct** - Convert numeric keys to strings when storing: `"${key}"`, access with strings: `struct["1"]`
+28. **Form widgets wrap themselves** - FormStateProvider should wrap the form content, not just children, to make state available to siblings
+29. **Defer setState during build** - Use `WidgetsBinding.instance.addPostFrameCallback()` to avoid setState() during build errors
 

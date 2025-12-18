@@ -326,6 +326,12 @@ final result = hetu.invoke('functionName', positionalArgs: [1, 2]); // NOT call(
 - Hetu returns Dart native types (`String`, `int`, `bool`, `List`) - not `HTString`, `HTInt`, etc.
 - Only `HTStruct` exists as a wrapper type (import from `package:hetu_script/values.dart`)
 - Access HTStruct values: `struct[key]` or iterate with `for (final key in struct.keys)`
+- **CRITICAL**: HTStruct uses **string keys** for member access
+  - When storing data: convert numeric keys to strings: `"${key}"`
+  - When accessing data: use string keys: `struct["1"]` not `struct[1]`
+- **CRITICAL**: Always convert HTStruct to Dart types before passing to Dart APIs
+  - Use `_convertHetuValueToDart()` helper that handles HTStruct → Map conversion
+  - Database operations from Hetu scripts are HTStruct, must convert before processing
 
 **Hetu Script Syntax:**
 - Widget constructor functions **must use named parameters** `{param1, param2}` to match UI script calls
@@ -442,6 +448,24 @@ Vlinder uses **Drift** for SQLite ORM and **sqlite3** for custom SQL execution:
 - Custom SQL execution uses `sqlite3.open()` directly, not `NativeDatabase.executor`
 - Add `sqlite3: ^2.4.0` to dependencies for custom SQL support
 
+**CRITICAL Database Operation Patterns:**
+
+1. **HTStruct Handling**: Operations queued from Hetu scripts are `HTStruct`, not `Map`
+   - Check for both types: `if (operation is Map || operation is HTStruct)`
+   - Convert HTStruct data using `_convertHetuValueToDart()` before passing to database API
+
+2. **Column Name Extraction**: Use explicit column names from schema, NOT `SELECT *`
+   - `SELECT *` causes generic column names (`column0`, `column1`, etc.)
+   - Build column list from schema: `schema.fields.keys.toList()`
+   - Use: `SELECT ${columnNames.join(', ')} FROM $tableName`
+
+3. **List Results**: `findAll()` returns a `List`, not a single item
+   - Extract first item if needed: `if (result is List && result.isNotEmpty) { result = result[0]; }`
+
+4. **String Keys**: Store database results with string keys in HTStruct
+   - Convert numeric operation IDs to strings: `"${entry.key}"`
+   - Access with string keys: `getDbResult(opId.toString())`
+
 #### Database API in Hetu Scripts
 
 Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database functions are **automatically registered** in the Hetu interpreter during app initialization and are available in all `.ht` files (actions.ht, workflows.ht, rules.ht, etc.).
@@ -546,8 +570,9 @@ query("SELECT * FROM customer WHERE age > " + age) // WRONG
 **Result Format:**
 
 - Single row queries return: `{id: 1, name: "John", email: "john@example.com"}`
-- Multiple row queries return: `[{id: 1, name: "John"}, {id: 2, name: "Jane"}]`
+- Multiple row queries (`findAll`) return: `[{id: 1, name: "John"}, {id: 2, name: "Jane"}]`
 - CRUD operations return the affected entity or operation status
+- **Important**: `findAll()` always returns a List, even with `limit: 1` - extract first item if needed
 
 **Error Handling:**
 
@@ -680,6 +705,12 @@ This pattern ensures:
 - Form widgets use `fields` array for child widgets, not `children`
 - The parser automatically converts `fields` to children widgets
 - Empty `children` arrays on Form widgets are automatically skipped
+- **CRITICAL**: Form widgets must wrap **themselves** with `FormStateProvider`, not just their children
+  - This makes form state available to sibling widgets (like ActionButton)
+  - Wrap form content in `build()` method, not just children
+- **CRITICAL**: Avoid `setState()` during build phase
+  - Use `WidgetsBinding.instance.addPostFrameCallback()` to defer setState calls
+  - Prevents "setState() or markNeedsBuild() called during build" errors
 
 **Example:**
 ```dart

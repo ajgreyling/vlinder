@@ -151,7 +151,10 @@ class DatabaseAPI {
 
       final tableName = entityName.toLowerCase();
       final primaryKey = schema.primaryKey ?? 'id';
-      final sql = 'SELECT * FROM $tableName WHERE $primaryKey = ?';
+      // Build explicit column list from schema to ensure proper field names
+      final columnNames = schema.fields.keys.toList();
+      final columnList = columnNames.join(', ');
+      final sql = 'SELECT $columnList FROM $tableName WHERE $primaryKey = ?';
       final results = await _database.query(sql, [id]);
 
       if (results.isEmpty) {
@@ -194,7 +197,10 @@ class DatabaseAPI {
       }
 
       final tableName = entityName.toLowerCase();
-      final sql = StringBuffer('SELECT * FROM $tableName');
+      // Build explicit column list from schema to ensure proper field names
+      final columnNames = schema.fields.keys.toList();
+      final columnList = columnNames.join(', ');
+      final sql = StringBuffer('SELECT $columnList FROM $tableName');
       final params = <dynamic>[];
 
       // Build WHERE clause
