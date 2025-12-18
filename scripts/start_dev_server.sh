@@ -98,6 +98,27 @@ rm -f /tmp/vlinder_server.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_flutter.pid
 echo -e "${GREEN}Cleanup complete. Starting fresh...${NC}"
 echo ""
 
+# Copy .ht files from sample_app/assets to server/assets
+echo -e "${GREEN}Copying .ht files from sample_app/assets to server/assets...${NC}"
+SAMPLE_ASSETS_DIR="$PROJECT_ROOT/sample_app/assets"
+SERVER_ASSETS_DIR="$PROJECT_ROOT/server/assets"
+
+# Ensure server/assets directory exists
+mkdir -p "$SERVER_ASSETS_DIR"
+
+# Copy all .ht files
+if [ -d "$SAMPLE_ASSETS_DIR" ]; then
+    cp "$SAMPLE_ASSETS_DIR"/*.ht "$SERVER_ASSETS_DIR/" 2>/dev/null || true
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Copied .ht files to server/assets${NC}"
+    else
+        echo -e "${YELLOW}Warning: No .ht files found in sample_app/assets${NC}"
+    fi
+else
+    echo -e "${YELLOW}Warning: sample_app/assets directory not found${NC}"
+fi
+echo ""
+
 # Start Python server in background
 echo -e "${GREEN}Starting Python HTTP server...${NC}"
 cd "$SERVER_DIR"
