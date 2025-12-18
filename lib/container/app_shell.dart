@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../vlinder/vlinder.dart';
 import '../vlinder/core/interpreter_provider.dart';
@@ -40,7 +41,6 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   Widget? _loadedUI;
   String? _errorMessage;
   bool _isLoading = true;
-  bool _isOffline = false;
   bool _waitingForServerUrl = false;
   LoadingStep _currentStep = LoadingStep.fetchingAssets;
 
@@ -222,9 +222,19 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       if (logsValue is List && logsValue.isNotEmpty) {
         debugPrint('[ContainerAppShell] Processing ${logsValue.length} Hetu log entries');
         for (final logEntry in logsValue) {
-          if (logEntry is Map) {
-            final level = logEntry['level']?.toString() ?? 'DEBUG';
-            final message = logEntry['message']?.toString() ?? '';
+          // Handle HTStruct (Hetu's struct type) and Map
+          String? level;
+          String? message;
+          
+          if (logEntry is HTStruct) {
+            level = logEntry['level']?.toString() ?? 'DEBUG';
+            message = logEntry['message']?.toString() ?? '';
+          } else if (logEntry is Map) {
+            level = logEntry['level']?.toString() ?? 'DEBUG';
+            message = logEntry['message']?.toString() ?? '';
+          }
+          
+          if (level != null && message != null) {
             _logFromHetu(level, message);
           }
         }
@@ -419,17 +429,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         _currentStep = LoadingStep.fetchingAssets;
       });
 
-      // Check if we have cached assets (offline mode)
-      debugPrint('[ContainerAppShell] Checking for cached assets');
-      if (_fetcher != null) {
-        final hasCache = await _fetcher!.hasCachedAssets();
-        if (hasCache) {
-          _isOffline = true;
-          debugPrint('[ContainerAppShell] Using cached assets (offline mode)');
-        }
-      }
-
-      // Fetch assets
+      // Fetch assets (cache disabled - always fetch fresh)
       debugPrint('[ContainerAppShell] Fetching assets${forceRefresh ? " (force refresh)" : ""}');
       setState(() {
         _currentStep = LoadingStep.fetchingAssets;
@@ -676,7 +676,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   String _getStepMessage() {
     switch (_currentStep) {
       case LoadingStep.fetchingAssets:
-        return _isOffline ? 'Loading from cache...' : 'Fetching assets...';
+        return 'Fetching assets...';
       case LoadingStep.loadingSchemas:
         return 'Loading schemas...';
       case LoadingStep.initializingDatabase:
@@ -833,14 +833,6 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
                   onPressed: _retry,
                   child: const Text('Retry'),
                 ),
-                if (_isOffline)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      'Offline mode - using cached assets',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
               ],
             ),
           ),

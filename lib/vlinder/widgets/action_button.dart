@@ -63,6 +63,11 @@ class VlinderActionButton extends StatelessWidget {
 
     // Get form state from context if available
     final formState = FormStateProvider.of(context);
+    if (formState != null) {
+      debugPrint('[VlinderActionButton] Found FormStateProvider: isValid=${formState.isValid}, values=${formState.values}');
+    } else {
+      debugPrint('[VlinderActionButton] WARNING: FormStateProvider not found in context');
+    }
     
     // Get interpreter from context provider, fallback to instance variable, or create new one
     final hetuInstance = HetuInterpreterProvider.of(context) ?? interpreter ?? (() {

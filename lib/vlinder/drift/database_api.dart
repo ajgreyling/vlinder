@@ -22,6 +22,14 @@ class DatabaseAPI {
     _schemas.addAll(schemas);
   }
 
+  /// Get a schema by entity name
+  EntitySchema? getSchema(String entityName) {
+    return _schemas[entityName];
+  }
+
+  /// Get all loaded schemas
+  Map<String, EntitySchema> get schemas => Map.unmodifiable(_schemas);
+
   /// Execute raw SQL statement (INSERT, UPDATE, DELETE, etc.)
   /// Returns the number of affected rows
   Future<int> executeSQL(String sql, [List<dynamic>? params]) async {

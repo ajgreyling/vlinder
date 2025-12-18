@@ -12,93 +12,46 @@ class AssetFetcher {
   AssetFetcher({String? serverUrl}) : serverUrl = serverUrl?.trim();
 
   /// Fetch all asset files
-  /// [forceRefresh] if true, bypasses cache and fetches fresh from server
+  /// Always fetches fresh from server - caching is disabled
   Future<Map<String, String>> fetchAllAssets({bool forceRefresh = false}) async {
     final assets = <String, String>{};
 
-    // If no server URL, only use cache
+    // Server URL is required - no cache fallback
     if (serverUrl == null || serverUrl!.isEmpty) {
-      debugPrint('[AssetFetcher] No server URL configured, loading from cache only');
-      for (final fileName in ContainerConfig.assetFiles) {
-        final cached = await loadFromCache(fileName);
-        if (cached != null) {
-          assets[fileName] = cached;
-        } else {
-          throw Exception('No server URL configured and no cached $fileName found');
-        }
-      }
-      return assets;
+      throw Exception('No server URL configured - cannot fetch assets');
     }
 
+    // Always fetch fresh from server - no caching
     for (final fileName in ContainerConfig.assetFiles) {
-      try {
-        final content = await fetchAsset(fileName, forceRefresh: forceRefresh);
-        assets[fileName] = content;
-      } catch (e) {
-        // Try to load from cache if fetch fails (unless forceRefresh is true)
-        if (!forceRefresh) {
-          final cached = await loadFromCache(fileName);
-          if (cached != null) {
-            assets[fileName] = cached;
-          } else {
-            throw Exception('Failed to fetch $fileName: $e');
-          }
-        } else {
-          throw Exception('Failed to fetch $fileName: $e');
-        }
-      }
+      final content = await fetchAsset(fileName, forceRefresh: true);
+      assets[fileName] = content;
     }
 
     return assets;
   }
 
   /// Fetch a single asset file
-  /// [forceRefresh] if true, bypasses cache and fetches fresh from server
+  /// Always fetches fresh from server - caching is disabled
   Future<String> fetchAsset(String fileName, {bool forceRefresh = false}) async {
     if (serverUrl == null || serverUrl!.isEmpty) {
-      // No server URL, try cache only
-      debugPrint('[AssetFetcher] No server URL, trying cache for $fileName');
-      final cached = await loadFromCache(fileName);
-      if (cached != null) {
-        debugPrint('[AssetFetcher] Loaded $fileName from cache');
-        return cached;
-      }
-      throw Exception('No server URL configured and no cached $fileName found');
+      throw Exception('No server URL configured - cannot fetch $fileName');
     }
 
     // Trim serverUrl to handle any whitespace issues
     final trimmedServerUrl = serverUrl!.trim();
     final url = '$trimmedServerUrl/$fileName';
-    debugPrint('[AssetFetcher] Fetching $fileName from $url${forceRefresh ? " (force refresh)" : ""}');
+    debugPrint('[AssetFetcher] Fetching $fileName from $url (cache disabled - always fresh)');
     
-    try {
-      final response = await http.get(Uri.parse(url));
-      
-      if (response.statusCode == 200) {
-        final content = response.body;
-        debugPrint('[AssetFetcher] Successfully fetched $fileName (${content.length} characters)');
-        
-        // Cache the content
-        await saveToCache(fileName, content);
-        
-        return content;
-      } else {
-        debugPrint('[AssetFetcher] HTTP ${response.statusCode} error fetching $fileName: ${response.reasonPhrase}');
-        throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
-      }
-    } catch (e) {
-      debugPrint('[AssetFetcher] Error fetching $fileName: $e');
-      // Try cache as fallback (unless forceRefresh is true)
-      if (!forceRefresh) {
-        debugPrint('[AssetFetcher] Trying cache fallback for $fileName');
-        final cached = await loadFromCache(fileName);
-        if (cached != null) {
-          debugPrint('[AssetFetcher] Loaded $fileName from cache fallback');
-          return cached;
-        }
-      }
-      debugPrint('[AssetFetcher] No cache available for $fileName, rethrowing error');
-      rethrow;
+    final response = await http.get(Uri.parse(url));
+    
+    if (response.statusCode == 200) {
+      final content = response.body;
+      debugPrint('[AssetFetcher] Successfully fetched $fileName (${content.length} characters)');
+      // Do NOT cache - always fetch fresh
+      return content;
+    } else {
+      debugPrint('[AssetFetcher] HTTP ${response.statusCode} error fetching $fileName: ${response.reasonPhrase}');
+      throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
     }
   }
 

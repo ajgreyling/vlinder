@@ -171,6 +171,55 @@ else
 fi
 echo ""
 
+# Run precompilation checks before starting servers and showing QR code
+# Temporarily disable exit on error for user input handling
+set +e
+if command -v flutter &> /dev/null; then
+    echo -e "${GREEN}Running pre-compilation checks...${NC}"
+    echo -e "${YELLOW}This will catch errors before starting servers${NC}"
+    echo ""
+    
+    cd "$PROJECT_ROOT"
+    # Run flutter analyze to catch compilation errors quickly
+    # Use --no-fatal-infos and --no-fatal-warnings to only fail on actual errors
+    ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1)
+    ANALYZE_EXIT_CODE=$?
+    
+    # Save full output for reference
+    echo "$ANALYZE_OUTPUT" > /tmp/flutter_analyze.log
+    
+    if [ $ANALYZE_EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}✓ Pre-compilation check passed!${NC}"
+        echo ""
+    else
+        echo -e "${RED}✗ Pre-compilation check failed!${NC}"
+        echo ""
+        echo -e "${RED}Errors found:${NC}"
+        # Extract and display errors (more readable format)
+        echo "$ANALYZE_OUTPUT" | grep -E "error •|Error:|ERROR" | head -n 30
+        echo ""
+        echo -e "${YELLOW}Full analysis output saved to: /tmp/flutter_analyze.log${NC}"
+        echo -e "${YELLOW}View full output: cat /tmp/flutter_analyze.log${NC}"
+        echo ""
+        echo -e "${RED}Fix the errors above before continuing, or continue anyway (not recommended).${NC}"
+        read -p "Continue anyway? (y/n): " CONTINUE_CHOICE
+        if [ "$CONTINUE_CHOICE" != "y" ] && [ "$CONTINUE_CHOICE" != "Y" ]; then
+            echo -e "${YELLOW}Exiting due to compilation errors${NC}"
+            echo -e "${YELLOW}Fix errors and run the script again${NC}"
+            # Re-enable exit on error and exit
+            set -e
+            exit 1
+        fi
+        echo -e "${YELLOW}Continuing despite errors...${NC}"
+        echo ""
+    fi
+else
+    echo -e "${YELLOW}Flutter not found. Skipping pre-compilation checks.${NC}"
+    echo ""
+fi
+# Re-enable exit on error for server startup
+set -e
+
 # Start Python asset server in background (internal port 8002)
 echo -e "${GREEN}Starting Python asset server (internal port 8002)...${NC}"
 cd "$SERVER_DIR"
@@ -314,46 +363,6 @@ set +e
 if command -v flutter &> /dev/null; then
     echo ""
     echo -e "${GREEN}Flutter detected.${NC}"
-    
-    # Pre-compilation check BEFORE device selection (much faster than flutter run)
-    echo -e "${GREEN}Running pre-compilation check...${NC}"
-    echo -e "${YELLOW}This will catch errors before the slow build process${NC}"
-    
-    cd "$PROJECT_ROOT"
-    # Run flutter analyze to catch compilation errors quickly
-    # Use --no-fatal-infos and --no-fatal-warnings to only fail on actual errors
-    ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1)
-    ANALYZE_EXIT_CODE=$?
-    
-    # Save full output for reference
-    echo "$ANALYZE_OUTPUT" > /tmp/flutter_analyze.log
-    
-    if [ $ANALYZE_EXIT_CODE -eq 0 ]; then
-        echo -e "${GREEN}✓ Pre-compilation check passed!${NC}"
-        echo ""
-    else
-        echo -e "${RED}✗ Pre-compilation check failed!${NC}"
-        echo ""
-        echo -e "${RED}Errors found:${NC}"
-        # Extract and display errors (more readable format)
-        echo "$ANALYZE_OUTPUT" | grep -E "error •|Error:|ERROR" | head -n 30
-        echo ""
-        echo -e "${YELLOW}Full analysis output saved to: /tmp/flutter_analyze.log${NC}"
-        echo -e "${YELLOW}View full output: cat /tmp/flutter_analyze.log${NC}"
-        echo ""
-        echo -e "${RED}Fix the errors above before continuing, or continue anyway (not recommended).${NC}"
-        read -p "Continue anyway? (y/n): " CONTINUE_CHOICE
-        if [ "$CONTINUE_CHOICE" != "y" ] && [ "$CONTINUE_CHOICE" != "Y" ]; then
-            echo -e "${YELLOW}Skipping Flutter deployment due to compilation errors${NC}"
-            echo -e "${YELLOW}Fix errors and run the script again${NC}"
-            # Re-enable exit on error and exit
-            set -e
-            exit 0
-        fi
-        echo -e "${YELLOW}Continuing despite errors...${NC}"
-        echo ""
-    fi
-    
     echo -e "${GREEN}Would you like to deploy to a device?${NC}"
     read -p "Deploy to device? (y/n): " DEPLOY_CHOICE
     

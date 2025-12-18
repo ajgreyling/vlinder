@@ -83,7 +83,12 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
   void _onChanged(String value) {
     final formState = FormStateProvider.of(context);
     if (formState != null) {
+      debugPrint('[VlinderTextField] Setting value for field "${widget.field}": "$value"');
       formState.setValue(widget.field, value);
+      debugPrint('[VlinderTextField] Form values after setValue: ${formState.values}');
+      debugPrint('[VlinderTextField] Form isValid: ${formState.isValid}');
+    } else {
+      debugPrint('[VlinderTextField] WARNING: FormStateProvider not found when setting value for "${widget.field}"');
     }
   }
 

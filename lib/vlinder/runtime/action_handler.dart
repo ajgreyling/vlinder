@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 import '../binding/drift_binding.dart';
 import '../drift/database_api.dart';
 import '../widgets/text_field.dart';
@@ -38,9 +39,16 @@ class ActionHandler {
       debugPrint('[ActionHandler] Executing action: $actionName');
       debugPrint('[ActionHandler] Parameters: $params');
       
+      // Ensure database functions are available BEFORE injecting action context
+      // This is critical because action context injection or actions may reference database functions
+      if (databaseAPI != null) {
+        _ensureDatabaseFunctionsAvailable();
+      }
+      
       // Prepare action context
       final actionContext = _prepareActionContext(params);
       debugPrint('[ActionHandler] Action context prepared: ${actionContext.keys.join(", ")}');
+      debugPrint('[ActionHandler] isValid: ${actionContext['isValid']}, formValues: ${actionContext['formValues']}');
       
       // Inject context into Hetu interpreter
       try {
@@ -52,11 +60,15 @@ class ActionHandler {
         debugPrint('[ActionHandler] Stack trace: $stackTrace');
         throw Exception('Failed to prepare action context: $e');
       }
-
-      // Ensure database functions are available BEFORE invoking the action
-      // This is critical because actions may call save(), findAll(), etc.
-      if (databaseAPI != null) {
-        _ensureDatabaseFunctionsAvailable();
+      
+      // Debug: Check what _dbOperations looks like before action invocation
+      try {
+        final opsBeforeAction = interpreter.fetch('_dbOperations');
+        if (opsBeforeAction is List) {
+          debugPrint('[ActionHandler] _dbOperations before action: ${opsBeforeAction.length} operations');
+        }
+      } catch (e) {
+        debugPrint('[ActionHandler] Could not check _dbOperations before action: $e');
       }
       
       // Try to call the action as a Hetu function first
@@ -84,14 +96,29 @@ class ActionHandler {
       // Function exists, try to invoke it
       try {
         debugPrint('[ActionHandler] Invoking Hetu function: $actionName');
+        
+        // Process any Hetu logs before action (from previous operations)
+        _processHetuLogsIfAvailable();
+        
         interpreter.invoke(actionName, positionalArgs: []);
         debugPrint('[ActionHandler] Action "$actionName" executed successfully');
         
+        // Process Hetu logs from the action execution
+        _processHetuLogsIfAvailable();
+        
         // Check if operations were queued before processing
+        // This is critical - we need to see which _dbOperations array has the operations
         try {
           final opsBefore = interpreter.fetch('_dbOperations');
           if (opsBefore is List) {
             debugPrint('[ActionHandler] Operations queued before processing: ${opsBefore.length}');
+            if (opsBefore.isNotEmpty) {
+              debugPrint('[ActionHandler] First operation: ${opsBefore.first}');
+            } else {
+              debugPrint('[ActionHandler] WARNING: No operations queued - action may have failed validation or not called save()/findAll()');
+            }
+          } else {
+            debugPrint('[ActionHandler] _dbOperations is not a List: ${opsBefore.runtimeType}');
           }
         } catch (e) {
           debugPrint('[ActionHandler] Could not check operations before processing: $e');
@@ -369,12 +396,22 @@ class ActionHandler {
   /// Ensure database functions are available in the interpreter
   /// This must be called BEFORE invoking actions that may use database functions
   void _ensureDatabaseFunctionsAvailable() {
+    // Check if database functions exist
+    // If 'save' exists, assume ContainerAppShell registered all functions
+    // (ContainerAppShell registers all database functions together)
+    bool functionsExist = false;
     try {
-      // Check if database functions exist
-      interpreter.fetch('save');
-      debugPrint('[ActionHandler] Database functions already available');
-      
-      // Ensure _dbOperations exists (check if it's a List and preserve existing operations)
+      final saveFunc = interpreter.fetch('save');
+      functionsExist = true;
+      debugPrint('[ActionHandler] Database functions already available (save function type: ${saveFunc.runtimeType})');
+    } catch (e) {
+      functionsExist = false;
+      debugPrint('[ActionHandler] save function not found: $e');
+    }
+    
+    if (functionsExist) {
+      // Functions exist - just ensure variables exist, don't recreate
+      // Preserve existing _dbOperations to avoid losing queued operations
       try {
         final existingOps = interpreter.fetch('_dbOperations');
         if (existingOps is List) {
@@ -383,8 +420,8 @@ class ActionHandler {
           debugPrint('[ActionHandler] _dbOperations exists but is not a List (type: ${existingOps.runtimeType}), reinitializing...');
           interpreter.eval('_dbOperations = []');
         }
-      } catch (e) {
-        // _dbOperations doesn't exist, initialize it without clearing existing functions
+      } catch (_) {
+        // _dbOperations doesn't exist, create it using assignment (not declaration)
         debugPrint('[ActionHandler] _dbOperations not found, initializing...');
         interpreter.eval('var _dbOperations = []');
         debugPrint('[ActionHandler] _dbOperations initialized');
@@ -405,74 +442,164 @@ class ActionHandler {
         debugPrint('[ActionHandler] _dbOperationId not found, initializing...');
         interpreter.eval('var _dbOperationId = 0');
       }
-    } catch (e) {
-      // Database functions don't exist, initialize them
+    } else {
+      // Database functions don't exist (or not found), initialize them
       debugPrint('[ActionHandler] Database functions not found, initializing...');
       
-      // Check and initialize variables if needed
+      // CRITICAL: Check if _dbOperations already exists BEFORE creating functions
+      // If ContainerAppShell registered functions but we can't find them (scope issue?),
+      // the functions might still be using an existing _dbOperations array.
+      // We MUST reuse that same array, not create a new one.
+      bool dbOpsExists = false;
+      int existingOpsCount = 0;
       try {
-        interpreter.fetch('_dbOperations');
+        final existing = interpreter.fetch('_dbOperations');
+        if (existing is List) {
+          dbOpsExists = true;
+          existingOpsCount = existing.length;
+          debugPrint('[ActionHandler] Found existing _dbOperations with $existingOpsCount operations - WILL REUSE IT');
+        }
       } catch (_) {
-        interpreter.eval('var _dbOperations = []');
+        dbOpsExists = false;
       }
       
+      // Initialize variables only if they don't exist
+      // CRITICAL: If _dbOperations exists, DO NOT recreate it - reuse it!
+      // This ensures that even if we redefine functions, they reference the same array
+      if (!dbOpsExists) {
+        interpreter.eval('var _dbOperations = []');
+        debugPrint('[ActionHandler] Created new _dbOperations array');
+      } else {
+        debugPrint('[ActionHandler] REUSING existing _dbOperations array (${existingOpsCount} operations) - functions will reference this same array');
+      }
+      
+      // Check and initialize _dbResults
       try {
         interpreter.fetch('_dbResults');
       } catch (_) {
         interpreter.eval('var _dbResults = {}');
       }
       
+      // Check and initialize _dbOperationId
       try {
         interpreter.fetch('_dbOperationId');
       } catch (_) {
         interpreter.eval('var _dbOperationId = 0');
       }
       
-      // Define database functions
-      interpreter.eval('''
-        fun save(entityName, data) {
-          final opId = _dbOperationId++
-          final operation = {
-            type: 'save',
-            id: opId,
-            entityName: entityName,
-            data: data,
+      // Check each function individually before defining to avoid redefinition errors
+      // Only define functions that don't already exist
+      try {
+        interpreter.fetch('save');
+        debugPrint('[ActionHandler] save function already exists, skipping');
+      } catch (_) {
+        interpreter.eval('''
+          fun save(entityName, data) {
+            final opId = _dbOperationId++
+            final operation = {
+              type: 'save',
+              id: opId,
+              entityName: entityName,
+              data: data,
+            }
+            _dbOperations.add(operation)
+            return opId
           }
-          _dbOperations.add(operation)
-          return opId
-        }
-        
-        fun findById(entityName, id) {
-          final opId = _dbOperationId++
-          final operation = {
-            type: 'findById',
-            id: opId,
-            entityName: entityName,
-            id: id,
+        ''');
+        debugPrint('[ActionHandler] save function defined');
+      }
+      
+      try {
+        interpreter.fetch('findById');
+        debugPrint('[ActionHandler] findById function already exists, skipping');
+      } catch (_) {
+        interpreter.eval('''
+          fun findById(entityName, id) {
+            final opId = _dbOperationId++
+            final operation = {
+              type: 'findById',
+              id: opId,
+              entityName: entityName,
+              id: id,
+            }
+            _dbOperations.add(operation)
+            return opId
           }
-          _dbOperations.add(operation)
-          return opId
-        }
-        
-        fun findAll(entityName, where, orderBy, limit) {
-          final opId = _dbOperationId++
-          final operation = {
-            type: 'findAll',
-            id: opId,
-            entityName: entityName,
-            where: where ?? {},
-            orderBy: orderBy,
-            limit: limit,
+        ''');
+        debugPrint('[ActionHandler] findById function defined');
+      }
+      
+      try {
+        interpreter.fetch('findAll');
+        debugPrint('[ActionHandler] findAll function already exists, skipping');
+      } catch (_) {
+        interpreter.eval('''
+          fun findAll(entityName, where, orderBy, limit) {
+            final opId = _dbOperationId++
+            final operation = {
+              type: 'findAll',
+              id: opId,
+              entityName: entityName,
+              where: where ?? {},
+              orderBy: orderBy,
+              limit: limit,
+            }
+            _dbOperations.add(operation)
+            return opId
           }
-          _dbOperations.add(operation)
-          return opId
+        ''');
+        debugPrint('[ActionHandler] findAll function defined');
+      }
+      
+      try {
+        interpreter.fetch('getDbResult');
+        debugPrint('[ActionHandler] getDbResult function already exists, skipping');
+      } catch (_) {
+        interpreter.eval('''
+          fun getDbResult(opId) {
+            return _dbResults[opId]
+          }
+        ''');
+        debugPrint('[ActionHandler] getDbResult function defined');
+      }
+      
+      debugPrint('[ActionHandler] Database functions initialization complete');
+    }
+  }
+
+  /// Process Hetu logs if available (for debugging action execution)
+  void _processHetuLogsIfAvailable() {
+    try {
+      final logsValue = interpreter.fetch('_hetuLogs');
+      if (logsValue is List && logsValue.isNotEmpty) {
+        debugPrint('[ActionHandler] Processing ${logsValue.length} Hetu log entries from action');
+        for (var i = 0; i < logsValue.length; i++) {
+          final logEntry = logsValue[i];
+          
+          // Handle HTStruct (Hetu's struct type)
+          if (logEntry is HTStruct) {
+            final level = logEntry['level']?.toString() ?? 'DEBUG';
+            final message = logEntry['message']?.toString() ?? '';
+            debugPrint('[ActionHandler] [HetuScript] $level: $message');
+          } else if (logEntry is Map) {
+            final level = logEntry['level']?.toString() ?? 'DEBUG';
+            final message = logEntry['message']?.toString() ?? '';
+            debugPrint('[ActionHandler] [HetuScript] $level: $message');
+          } else {
+            debugPrint('[ActionHandler] [HetuScript] Log entry $i is not HTStruct or Map: ${logEntry.runtimeType}, value=$logEntry');
+          }
         }
-        
-        fun getDbResult(opId) {
-          return _dbResults[opId]
+        // Clear the logs array
+        try {
+          interpreter.eval('_hetuLogs = []');
+        } catch (e) {
+          debugPrint('[ActionHandler] Could not clear _hetuLogs: $e');
         }
-      ''');
-      debugPrint('[ActionHandler] Database functions initialized');
+      } else {
+        debugPrint('[ActionHandler] No Hetu logs to process (logsValue is ${logsValue.runtimeType}, isEmpty: ${logsValue is List ? (logsValue as List).isEmpty : 'N/A'})');
+      }
+    } catch (e) {
+      debugPrint('[ActionHandler] Could not process Hetu logs: $e');
     }
   }
 
