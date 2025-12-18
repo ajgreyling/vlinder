@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../vlinder/vlinder.dart';
 import '../vlinder/core/interpreter_provider.dart';
 import 'asset_fetcher.dart';
@@ -28,12 +29,13 @@ class ContainerAppShell extends StatefulWidget {
 class _ContainerAppShellState extends State<ContainerAppShell> {
   late final Hetu _interpreter;
   late final VlinderRuntime _runtime;
-  final AssetFetcher _fetcher = AssetFetcher();
+  AssetFetcher? _fetcher;
   
   Widget? _loadedUI;
   String? _errorMessage;
   bool _isLoading = true;
   bool _isOffline = false;
+  bool _waitingForServerUrl = false;
   LoadingStep _currentStep = LoadingStep.fetchingAssets;
 
   @override
@@ -61,7 +63,60 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
     }
     
-    _initializeApp();
+    _checkServerUrl();
+  }
+
+  /// Check if server URL is configured, show landing screen if not
+  Future<void> _checkServerUrl() async {
+    final serverUrl = await ContainerConfig.serverUrl;
+    if (serverUrl == null || serverUrl.isEmpty) {
+      debugPrint('[ContainerAppShell] No server URL configured, showing landing screen');
+      setState(() {
+        _waitingForServerUrl = true;
+        _isLoading = false;
+      });
+    } else {
+      debugPrint('[ContainerAppShell] Server URL found: $serverUrl');
+      _fetcher = AssetFetcher(serverUrl: serverUrl);
+      _initializeApp();
+    }
+  }
+
+  /// Handle QR code scan result
+  Future<void> _handleQRCodeScan(String? code) async {
+    if (code == null || code.isEmpty) {
+      return;
+    }
+
+    // Validate URL format
+    final uri = Uri.tryParse(code);
+    if (uri == null || (!uri.scheme.startsWith('http'))) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid URL format. Please scan a valid HTTP/HTTPS URL.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Save URL to persistent storage
+    await ContainerConfig.saveServerUrl(code);
+    debugPrint('[ContainerAppShell] Server URL saved: $code');
+
+    // Update fetcher with new URL
+    _fetcher = AssetFetcher(serverUrl: code);
+
+    // Hide QR scanner and start initialization
+    if (mounted) {
+      setState(() {
+        _waitingForServerUrl = false;
+        _isLoading = true;
+      });
+      _initializeApp();
+    }
   }
 
   /// Register logging functions in Hetu interpreter
@@ -192,10 +247,12 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
 
       // Check if we have cached assets (offline mode)
       debugPrint('[ContainerAppShell] Checking for cached assets');
-      final hasCache = await _fetcher.hasCachedAssets();
-      if (hasCache) {
-        _isOffline = true;
-        debugPrint('[ContainerAppShell] Using cached assets (offline mode)');
+      if (_fetcher != null) {
+        final hasCache = await _fetcher!.hasCachedAssets();
+        if (hasCache) {
+          _isOffline = true;
+          debugPrint('[ContainerAppShell] Using cached assets (offline mode)');
+        }
       }
 
       // Fetch assets
@@ -205,7 +262,10 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       });
       Map<String, String> assets;
       try {
-        assets = await _fetcher.fetchAllAssets();
+        if (_fetcher == null) {
+          throw Exception('AssetFetcher not initialized - server URL required');
+        }
+        assets = await _fetcher!.fetchAllAssets();
         debugPrint('[ContainerAppShell] Fetched ${assets.length} assets: ${assets.keys.join(", ")}');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to fetch assets: $e';
@@ -425,6 +485,11 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Show landing screen if waiting for server URL
+    if (_waitingForServerUrl) {
+      return _buildLandingScreen();
+    }
+
     // If UI is loaded, wrap it with HetuInterpreterProvider so widgets can access the interpreter
     if (!_isLoading && _loadedUI != null && _errorMessage == null) {
       return HetuInterpreterProvider(
@@ -631,6 +696,181 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       case LoadingStep.complete:
         return 'Complete';
     }
+  }
+
+  /// Build landing screen with Link button
+  Widget _buildLandingScreen() {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Theme.of(context).colorScheme.primaryContainer,
+              Theme.of(context).colorScheme.surface,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Icon/Logo placeholder
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.apps,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  // App Title
+                  Text(
+                    'Vlinder Container',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Instructions
+                  Text(
+                    'Scan the QR code to link with your server',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 48),
+                  // Link button
+                  ElevatedButton.icon(
+                    onPressed: () => _showQRScanner(),
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('Link'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 16,
+                      ),
+                      textStyle: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show QR code scanner screen
+  void _showQRScanner() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _QRScannerScreen(
+          onScan: _handleQRCodeScan,
+        ),
+      ),
+    );
+  }
+}
+
+/// QR Code Scanner Screen
+class _QRScannerScreen extends StatefulWidget {
+  final Function(String?) onScan;
+
+  const _QRScannerScreen({required this.onScan});
+
+  @override
+  State<_QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends State<_QRScannerScreen> {
+  final MobileScannerController _controller = MobileScannerController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan QR Code'),
+        backgroundColor: Colors.black,
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: _controller,
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+              if (barcodes.isNotEmpty) {
+                final barcode = barcodes.first;
+                if (barcode.rawValue != null) {
+                  // Stop scanning
+                  _controller.stop();
+                  // Process the scanned code
+                  widget.onScan(barcode.rawValue);
+                  // Navigate back
+                  Navigator.of(context).pop();
+                }
+              }
+            },
+          ),
+          // Overlay with scanning area indicator
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Colors.white,
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          // Instructions
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Position the QR code within the frame',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(0, 1),
+                          blurRadius: 3,
+                          color: Colors.black.withOpacity(0.8),
+                        ),
+                      ],
+                    ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

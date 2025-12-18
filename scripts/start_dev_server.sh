@@ -279,6 +279,35 @@ echo "$NGROK_URL" > /tmp/vlinder_ngrok_url.txt
 
 echo -e "${GREEN}Ready! Run build script with: ./scripts/build_container.sh${NC}"
 
+# Open QR code terminal window
+echo -e "${GREEN}Opening QR code window...${NC}"
+if command -v qrencode &> /dev/null; then
+    if command -v osascript &> /dev/null; then
+        # macOS - open new Terminal window with QR code
+        osascript <<EOF
+tell application "Terminal"
+    do script "clear && echo '========================================' && echo 'Vlinder Server QR Code' && echo '========================================' && echo '' && echo 'Server URL:' && echo '$NGROK_URL' && echo '' && echo 'Scan this QR code with the Vlinder Container app:' && echo '' && qrencode -m 2 -t utf8 <<< '$NGROK_URL' && echo '' && echo '========================================' && echo 'Press Ctrl+C to close this window' && echo '========================================'"
+    activate
+end tell
+EOF
+        echo -e "${GREEN}QR code window opened${NC}"
+        sleep 2  # Give the terminal window time to open
+    else
+        echo -e "${YELLOW}Note: osascript not available. Displaying QR code here:${NC}"
+        echo ""
+        qrencode -m 2 -t utf8 <<< "$NGROK_URL"
+        echo ""
+    fi
+else
+    echo -e "${YELLOW}Warning: qrencode not found${NC}"
+    echo "Install qrencode to display QR code:"
+    echo "  macOS: brew install qrencode"
+    echo "  Linux: sudo apt-get install qrencode"
+    echo ""
+    echo "Server URL: $NGROK_URL"
+    echo "Scan this URL manually or install qrencode for QR code display"
+fi
+
 # Check if Flutter is available and offer device deployment
 # Temporarily disable exit on error for user input handling
 set +e
@@ -396,12 +425,12 @@ EOF
                     echo -e "${YELLOW}Note: osascript not available. Run '$PROJECT_ROOT/scripts/view_logs.sh' manually to view logs${NC}"
                 fi
                 
-                # Build and run Flutter app with server URL
+                # Build and run Flutter app
+                # Note: Server URL is no longer baked in - user will scan QR code
                 cd "$PROJECT_ROOT"
                 
-                # Build command with asset server URL and log server URL
-                # Both services are now accessible through the same ngrok URL
-                FLUTTER_CMD="flutter run -d \"$SELECTED_DEVICE\" --dart-define=VLINDER_SERVER_URL=\"$NGROK_URL\" --dart-define=VLINDER_LOG_SERVER_URL=\"$NGROK_URL\""
+                # Build command - log server URL can still be passed for debugging
+                FLUTTER_CMD="flutter run -d \"$SELECTED_DEVICE\" --dart-define=VLINDER_LOG_SERVER_URL=\"$NGROK_URL\""
                 echo -e "${GREEN}Running: $FLUTTER_CMD${NC}"
                 echo -e "${GREEN}Debug logs are visible in the log viewer window${NC}"
                 echo -e "${GREEN}Both services accessible via: $NGROK_URL${NC}"
