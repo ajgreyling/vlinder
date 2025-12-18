@@ -147,11 +147,17 @@ class ActionHandler {
                   // Clear the query ID so we don't navigate again
                   interpreter.eval('_savedCustomerQueryId = null');
                 } else {
-                  debugPrint('[ActionHandler] Query result is null for operation ID: $savedCustomerQueryId');
+                  debugPrint('[ActionHandler] Query result is null for operation ID: $savedCustomerQueryId (type: ${savedCustomerQueryId.runtimeType})');
                   debugPrint('[ActionHandler] Checking _dbResults directly...');
                   try {
                     final dbResults = interpreter.fetch('_dbResults');
                     debugPrint('[ActionHandler] _dbResults contents: $dbResults');
+                    if (dbResults is HTStruct) {
+                      debugPrint('[ActionHandler] _dbResults keys: ${dbResults.keys.toList()}');
+                      debugPrint('[ActionHandler] Attempting to access with string key: "${savedCustomerQueryId.toString()}"');
+                      final directAccess = dbResults[savedCustomerQueryId.toString()];
+                      debugPrint('[ActionHandler] Direct access result: $directAccess');
+                    }
                   } catch (e) {
                     debugPrint('[ActionHandler] Could not fetch _dbResults: $e');
                   }
@@ -314,12 +320,22 @@ class ActionHandler {
   Widget _buildSavedCustomerScreen(dynamic customerData) {
     // Convert customer data to Map if it's not already
     Map<String, dynamic> customerMap;
-    if (customerData is Map) {
+    if (customerData is HTStruct) {
+      // Convert HTStruct to Map
+      customerMap = _convertHetuValueToDart(customerData) as Map<String, dynamic>;
+    } else if (customerData is Map) {
       customerMap = Map<String, dynamic>.from(customerData);
     } else {
       // If it's a list (from findAll), get the first item
       if (customerData is List && customerData.isNotEmpty) {
-        customerMap = Map<String, dynamic>.from(customerData[0] as Map);
+        final firstItem = customerData[0];
+        if (firstItem is HTStruct) {
+          customerMap = _convertHetuValueToDart(firstItem) as Map<String, dynamic>;
+        } else if (firstItem is Map) {
+          customerMap = Map<String, dynamic>.from(firstItem);
+        } else {
+          customerMap = {};
+        }
       } else {
         customerMap = {};
       }
@@ -557,7 +573,8 @@ class ActionHandler {
       } catch (_) {
         interpreter.eval('''
           fun getDbResult(opId) {
-            return _dbResults[opId]
+            // Convert opId to string to match how results are stored
+            return _dbResults[opId.toString()]
           }
         ''');
         debugPrint('[ActionHandler] getDbResult function defined');
@@ -631,9 +648,12 @@ class ActionHandler {
         final results = <int, dynamic>{};
         
         for (final operation in operationsValue) {
-          if (operation is Map) {
+          // Handle both Map and HTStruct (operations from Hetu are HTStruct)
+          if (operation is Map || operation is HTStruct) {
             final opId = operation['id'];
             final opType = operation['type']?.toString() ?? '';
+            
+            debugPrint('[ActionHandler] Processing operation $opId: type=$opType, operation type=${operation.runtimeType}');
             
             try {
               dynamic result;
@@ -702,13 +722,18 @@ class ActionHandler {
               }
               
               results[opId] = result;
+              debugPrint('[ActionHandler] Operation $opId completed successfully, result type: ${result.runtimeType}');
             } catch (e, stackTrace) {
               debugPrint('[ActionHandler] Error processing database operation $opId ($opType): $e');
               debugPrint('[ActionHandler] Stack trace: $stackTrace');
               results[opId] = {'error': e.toString()};
             }
+          } else {
+            debugPrint('[ActionHandler] WARNING: Skipping operation - not a Map or HTStruct: ${operation.runtimeType}');
           }
         }
+        
+        debugPrint('[ActionHandler] Collected ${results.length} results from ${operationsValue.length} operations');
         
         // Ensure _dbResults exists before storing results
         try {
@@ -719,10 +744,12 @@ class ActionHandler {
         }
         
         // Store results in Hetu interpreter
+        // Convert keys to strings to ensure consistent access via getDbResult
         final resultsScript = StringBuffer();
         resultsScript.writeln('_dbResults = {');
         for (final entry in results.entries) {
-          resultsScript.writeln('  ${entry.key}: ${_dartToHetuValue(entry.value)},');
+          // Convert key to string to ensure HTStruct can access it properly
+          resultsScript.writeln('  "${entry.key}": ${_dartToHetuValue(entry.value)},');
         }
         resultsScript.writeln('}');
         
@@ -747,6 +774,13 @@ class ActionHandler {
       return value;
     } else if (value is List) {
       return value.map((e) => _convertHetuValueToDart(e)).toList();
+    } else if (value is HTStruct) {
+      // Convert HTStruct to Map<String, dynamic>
+      final result = <String, dynamic>{};
+      for (final key in value.keys) {
+        result[key.toString()] = _convertHetuValueToDart(value[key]);
+      }
+      return result;
     } else if (value is Map) {
       final result = <String, dynamic>{};
       for (final entry in value.entries) {
