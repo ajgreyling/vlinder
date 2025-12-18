@@ -53,7 +53,7 @@ def main():
     ht_files = list(ASSETS_DIR.glob('*.ht'))
     if not ht_files:
         print(f"Warning: No .ht files found in {ASSETS_DIR}")
-        print(f"Expected files: ui.ht, schema.ht, workflows.ht, rules.ht")
+        print(f"Expected files: ui.ht, schema.ht, workflows.ht, rules.ht, actions.ht")
     
     # Create server
     with socketserver.TCPServer(("", PORT), CORSRequestHandler) as httpd:

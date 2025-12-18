@@ -1,0 +1,62 @@
+// Sample Action Definitions - Customer Registration Actions
+// Demonstrates using database API functions from Hetu scripts
+
+// Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
+logInfo("Loading action definitions")
+
+// Submit customer action - saves form data to database using database API
+fun submit_customer() {
+  logInfo("submit_customer action called")
+  
+  // Access form values from actionContext (injected by ActionHandler)
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  
+  // Validate form before saving
+  if (!isValid) {
+    logError("Form validation failed - cannot submit customer")
+    return
+  }
+  
+  logInfo("Form is valid, preparing to save customer data")
+  logInfo("Form values: ${formValues}")
+  
+  // Queue a database save operation using the database API
+  // The save() function queues the operation and returns an operation ID
+  final saveOpId = save('Customer', formValues)
+  
+  logInfo("Customer save operation queued with ID: ${saveOpId}")
+  
+  // Note: The database operation will be processed by ActionHandler
+  // after this function completes. Results will be available via getDbResult(saveOpId)
+  // in subsequent actions or function calls.
+}
+
+// Example: Find customer by ID action
+fun find_customer(id) {
+  logInfo("Finding customer with ID: ${id}")
+  
+  // Queue a database query operation
+  final findOpId = findById('Customer', id)
+  
+  logInfo("Customer find operation queued with ID: ${findOpId}")
+  
+  // Return the operation ID so caller can retrieve results later
+  return findOpId
+}
+
+// Example: List all customers action
+fun list_customers(where, orderBy, limit) {
+  logInfo("Listing customers")
+  
+  // Queue a database query operation
+  final listOpId = findAll('Customer', where ?? {}, orderBy, limit)
+  
+  logInfo("Customer list operation queued with ID: ${listOpId}")
+  
+  return listOpId
+}
+
+log("Action definitions loaded successfully")
+logInfo("Actions available: submit_customer, find_customer, list_customers")
+

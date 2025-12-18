@@ -30,6 +30,9 @@ dependencies:
   # Device info for logging
   device_info_plus: ^9.1.0
   
+  # App version info for detecting updates
+  package_info_plus: ^8.0.0
+  
   # Persistent storage for server URL
   shared_preferences: ^2.2.2
   

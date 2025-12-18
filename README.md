@@ -441,6 +441,113 @@ Vlinder uses **Drift** for SQLite ORM and **sqlite3** for custom SQL execution:
 - Custom SQL execution uses `sqlite3.open()` directly, not `NativeDatabase.executor`
 - Add `sqlite3: ^2.4.0` to dependencies for custom SQL support
 
+#### Database API in Hetu Scripts
+
+Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database operations are queued during script execution and processed asynchronously by `ActionHandler` after action completion.
+
+**Available Database Functions:**
+
+```hetu
+// Raw SQL execution (INSERT, UPDATE, DELETE)
+final opId = executeSQL("INSERT INTO customer (name, email) VALUES (?, ?)", ["John", "john@example.com"])
+
+// SELECT queries with results
+final queryOpId = query("SELECT * FROM customer WHERE age > ?", [18])
+final customers = getDbResult(queryOpId) // Returns list of maps
+
+// CRUD convenience methods
+final saveOpId = save('Customer', {name: 'John', email: 'john@example.com'})
+final saved = getDbResult(saveOpId) // Returns saved entity with generated ID
+
+final findOpId = findById('Customer', 1)
+final customer = getDbResult(findOpId) // Returns single entity or null
+
+final findAllOpId = findAll('Customer', {age: {gt: 18}}, {orderBy: 'name'}, 10)
+final allCustomers = getDbResult(findAllOpId) // Returns list of entities
+
+final updateOpId = update('Customer', 1, {name: 'Jane'})
+final updated = getDbResult(updateOpId) // Returns updated entity
+
+final deleteOpId = delete('Customer', 1)
+final deleted = getDbResult(deleteOpId) // Returns true if deleted
+```
+
+**Usage Pattern:**
+
+Database operations use an async queue pattern:
+
+1. **Queue Operation**: Call database function (e.g., `save()`) which returns an operation ID
+2. **Process Operations**: `ActionHandler` automatically processes queued operations after action execution
+3. **Get Results**: Use `getDbResult(opId)` to retrieve the result of a specific operation
+4. **Clear Results**: Call `clearDbResults()` to clean up after processing
+
+**Example Action Function:**
+
+```hetu
+fun submit_customer() {
+  // Get form data from action context
+  final customerData = actionContext.formValues
+  
+  // Queue save operation
+  final saveOpId = save('Customer', customerData)
+  
+  // Operation is processed automatically by ActionHandler
+  // Results are available after action completes
+  
+  // Get result (called after processing)
+  final result = getDbResult(saveOpId)
+  logInfo("Customer saved with ID: ${result.id}")
+}
+```
+
+**Form Auto-Save:**
+
+If a form has an `entity` property and no custom action handles submission, `ActionHandler` will automatically save form data to the database:
+
+```hetu
+Form(
+  entity: 'Customer',
+  fields: [
+    TextField(field: 'name', label: 'Name'),
+    TextField(field: 'email', label: 'Email'),
+  ],
+)
+ActionButton(
+  label: 'Save',
+  action: 'submit', // Uses default form save behavior
+)
+```
+
+**Parameter Binding:**
+
+All SQL operations use parameter binding with `?` placeholders to prevent SQL injection:
+
+```hetu
+// CORRECT - Parameter binding
+query("SELECT * FROM customer WHERE age > ? AND name LIKE ?", [18, "%John%"])
+
+// INCORRECT - String concatenation (vulnerable to SQL injection)
+query("SELECT * FROM customer WHERE age > " + age) // WRONG
+```
+
+**Result Format:**
+
+- Single row queries return: `{id: 1, name: "John", email: "john@example.com"}`
+- Multiple row queries return: `[{id: 1, name: "John"}, {id: 2, name: "Jane"}]`
+- CRUD operations return the affected entity or operation status
+
+**Error Handling:**
+
+Database errors are caught and stored in results with an `error` field:
+
+```hetu
+final opId = save('InvalidEntity', {name: 'Test'})
+final result = getDbResult(opId)
+if (result.error != null) {
+  logError("Database error: ${result.error}")
+}
+```
+
 ### Debug Logging
 
 Vlinder includes comprehensive debug logging throughout:

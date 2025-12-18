@@ -9,7 +9,7 @@ import 'config.dart';
 class AssetFetcher {
   final String? serverUrl;
 
-  AssetFetcher({String? serverUrl}) : serverUrl = serverUrl;
+  AssetFetcher({String? serverUrl}) : serverUrl = serverUrl?.trim();
 
   /// Fetch all asset files
   Future<Map<String, String>> fetchAllAssets() async {
@@ -51,34 +51,45 @@ class AssetFetcher {
   Future<String> fetchAsset(String fileName) async {
     if (serverUrl == null || serverUrl!.isEmpty) {
       // No server URL, try cache only
+      debugPrint('[AssetFetcher] No server URL, trying cache for $fileName');
       final cached = await loadFromCache(fileName);
       if (cached != null) {
+        debugPrint('[AssetFetcher] Loaded $fileName from cache');
         return cached;
       }
       throw Exception('No server URL configured and no cached $fileName found');
     }
 
-    final url = '$serverUrl/$fileName';
+    // Trim serverUrl to handle any whitespace issues
+    final trimmedServerUrl = serverUrl!.trim();
+    final url = '$trimmedServerUrl/$fileName';
+    debugPrint('[AssetFetcher] Fetching $fileName from $url');
     
     try {
       final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
         final content = response.body;
+        debugPrint('[AssetFetcher] Successfully fetched $fileName (${content.length} characters)');
         
         // Cache the content
         await saveToCache(fileName, content);
         
         return content;
       } else {
+        debugPrint('[AssetFetcher] HTTP ${response.statusCode} error fetching $fileName: ${response.reasonPhrase}');
         throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
       }
     } catch (e) {
+      debugPrint('[AssetFetcher] Error fetching $fileName: $e');
       // Try cache as fallback
+      debugPrint('[AssetFetcher] Trying cache fallback for $fileName');
       final cached = await loadFromCache(fileName);
       if (cached != null) {
+        debugPrint('[AssetFetcher] Loaded $fileName from cache fallback');
         return cached;
       }
+      debugPrint('[AssetFetcher] No cache available for $fileName, rethrowing error');
       rethrow;
     }
   }

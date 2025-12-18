@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../runtime/action_handler.dart';
 import '../binding/drift_binding.dart';
 import '../core/interpreter_provider.dart';
+import '../core/database_provider.dart';
 import 'package:hetu_script/hetu_script.dart';
 
 /// ActionButton widget - Primary or secondary action trigger
@@ -72,10 +73,14 @@ class VlinderActionButton extends StatelessWidget {
       return h;
     })();
     
+    // Get database API from context provider
+    final databaseAPI = DatabaseAPIProvider.of(context);
+    
     final handler = ActionHandler(
       interpreter: hetuInstance,
       context: context,
       formState: formState,
+      databaseAPI: databaseAPI,
     );
 
     // Execute action

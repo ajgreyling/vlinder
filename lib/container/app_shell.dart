@@ -3,6 +3,9 @@ import 'package:hetu_script/hetu_script.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../vlinder/vlinder.dart';
 import '../vlinder/core/interpreter_provider.dart';
+import '../vlinder/core/database_provider.dart';
+import '../vlinder/drift/database_api.dart';
+import '../vlinder/drift/database.dart';
 import 'asset_fetcher.dart';
 import 'debug_logger.dart';
 import 'config.dart';
@@ -14,6 +17,7 @@ enum LoadingStep {
   initializingDatabase,
   loadingWorkflows,
   loadingRules,
+  loadingActions,
   loadingUI,
   complete,
 }
@@ -29,6 +33,8 @@ class ContainerAppShell extends StatefulWidget {
 class _ContainerAppShellState extends State<ContainerAppShell> {
   late final Hetu _interpreter;
   late final VlinderRuntime _runtime;
+  late final VlinderDatabase _database;
+  late final DatabaseAPI _databaseAPI;
   AssetFetcher? _fetcher;
   
   Widget? _loadedUI;
@@ -45,25 +51,37 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     _interpreter = Hetu();
     _interpreter.init();
     
-    // Register logging functions in the interpreter
-    // This allows .ht files to use log(), logInfo(), logWarning(), logError()
-    _registerLoggingFunctions();
+    // Create database and API
+    _database = VlinderDatabase();
+    _databaseAPI = DatabaseAPI(database: _database);
     
-    // Create runtime with shared interpreter
-    // This ensures UI scripts can access schemas, workflows, and rules
-    _runtime = VlinderRuntime(interpreter: _interpreter);
-    
-    // Enable remote debug logging if configured
-    // Pass log server URL explicitly from config
-    final logServerUrl = ContainerConfig.debugLogServerUrl;
-    if (logServerUrl != null && logServerUrl.isNotEmpty) {
-      debugPrint('[ContainerAppShell] Enabling debug logging to: $logServerUrl');
-      DebugLogger.instance.enable(logServerUrl: logServerUrl);
-    } else {
-      debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
-    }
-    
-    _checkServerUrl();
+    // Check app version and clear stored data if version changed
+    // This ensures users scan a fresh QR code when a new app version is deployed
+    ContainerConfig.checkAndClearOnVersionChange().then((_) {
+      // Register logging functions in the interpreter
+      // This allows .ht files to use log(), logInfo(), logWarning(), logError()
+      _registerLoggingFunctions();
+      
+      // Register database functions in the interpreter
+      // This allows .ht files to use executeSQL(), query(), save(), etc.
+      _registerDatabaseFunctions();
+      
+      // Create runtime with shared interpreter
+      // This ensures UI scripts can access schemas, workflows, and rules
+      _runtime = VlinderRuntime(interpreter: _interpreter);
+      
+      // Enable remote debug logging if configured
+      // Pass log server URL explicitly from config
+      final logServerUrl = ContainerConfig.debugLogServerUrl;
+      if (logServerUrl != null && logServerUrl.isNotEmpty) {
+        debugPrint('[ContainerAppShell] Enabling debug logging to: $logServerUrl');
+        DebugLogger.instance.enable(logServerUrl: logServerUrl);
+      } else {
+        debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
+      }
+      
+      _checkServerUrl();
+    });
   }
 
   /// Check if server URL is configured, show landing screen if not
@@ -102,12 +120,13 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       return;
     }
 
-    // Save URL to persistent storage
-    await ContainerConfig.saveServerUrl(code);
-    debugPrint('[ContainerAppShell] Server URL saved: $code');
+    // Trim and save URL to persistent storage
+    final trimmedUrl = code.trim();
+    await ContainerConfig.saveServerUrl(trimmedUrl);
+    debugPrint('[ContainerAppShell] Server URL saved: $trimmedUrl');
 
-    // Update fetcher with new URL
-    _fetcher = AssetFetcher(serverUrl: code);
+    // Update fetcher with trimmed URL
+    _fetcher = AssetFetcher(serverUrl: trimmedUrl);
 
     // Hide QR scanner and start initialization
     if (mounted) {
@@ -228,6 +247,144 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     
     debugPrint(logMessage);
   }
+
+  /// Register database functions in Hetu interpreter
+  /// These functions allow .ht files to interact with the database
+  /// Note: Database operations are async, so these functions queue operations
+  /// that are processed by ActionHandler when actions are executed
+  void _registerDatabaseFunctions() {
+    debugPrint('[ContainerAppShell] Registering database functions in Hetu interpreter...');
+    
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      _interpreter.fetch('executeSQL');
+      debugPrint('[ContainerAppShell] Database functions already defined, skipping registration');
+      return;
+    } catch (_) {
+      // Functions don't exist, proceed with definition
+    }
+
+    // Create database functions that store operations in a queue
+    // These operations will be processed by ActionHandler when actions execute
+    // The results will be stored in _dbResults and can be accessed via getDbResult()
+    final databaseScript = '''
+      // Database operation queue - stores pending operations
+      var _dbOperations = []
+      var _dbResults = {}
+      var _dbOperationId = 0
+      
+      // Execute raw SQL statement
+      fun executeSQL(sql, params) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'executeSQL',
+          id: opId,
+          sql: sql,
+          params: params ?? [],
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Execute SELECT query
+      fun query(sql, params) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'query',
+          id: opId,
+          sql: sql,
+          params: params ?? [],
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Save entity (INSERT or UPDATE)
+      fun save(entityName, data) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'save',
+          id: opId,
+          entityName: entityName,
+          data: data,
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Find entity by ID
+      fun findById(entityName, id) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'findById',
+          id: opId,
+          entityName: entityName,
+          id: id,
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Find all entities
+      fun findAll(entityName, where, orderBy, limit) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'findAll',
+          id: opId,
+          entityName: entityName,
+          where: where ?? {},
+          orderBy: orderBy,
+          limit: limit,
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Update entity
+      fun update(entityName, id, data) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'update',
+          id: opId,
+          entityName: entityName,
+          id: id,
+          data: data,
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Delete entity
+      fun delete(entityName, id) {
+        final opId = _dbOperationId++
+        final operation = {
+          type: 'delete',
+          id: opId,
+          entityName: entityName,
+          id: id,
+        }
+        _dbOperations.add(operation)
+        return opId
+      }
+      
+      // Get result from operation (called after processing)
+      fun getDbResult(opId) {
+        return _dbResults[opId]
+      }
+      
+      // Clear results (called after processing)
+      fun clearDbResults() {
+        _dbResults = {}
+      }
+    ''';
+
+    try {
+      _interpreter.eval(databaseScript);
+      debugPrint('[ContainerAppShell] Database functions registered successfully');
+    } catch (e) {
+      debugPrint('[ContainerAppShell] Warning: Could not register database functions: $e');
+    }
+  }
   
   @override
   void dispose() {
@@ -284,6 +441,9 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         final schemaContent = assets['schema.ht'] ?? '';
         final schemaLoader = SchemaLoader(interpreter: _interpreter);
         schemas = schemaLoader.loadSchemas(schemaContent);
+        
+        // Update database API with loaded schemas
+        _databaseAPI.updateSchemas(schemas);
         
         // Process any logs from Hetu script execution
         _processHetuLogs();
@@ -388,6 +548,57 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         throw Exception('Step: Loading rules - File: rules.ht - $errorMsg');
       }
 
+      // Load actions (required file)
+      debugPrint('[ContainerAppShell] Loading actions');
+      setState(() {
+        _currentStep = LoadingStep.loadingActions;
+      });
+      try {
+        final actionsContent = assets['actions.ht'] ?? '';
+        if (actionsContent.isEmpty) {
+          final errorMsg = 'actions.ht file is required but not found in assets';
+          debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+          throw Exception('Step: Loading actions - File: actions.ht - $errorMsg');
+        }
+        
+        debugPrint('[ContainerAppShell] Evaluating actions.ht content (${actionsContent.length} characters)');
+        
+        // Evaluate actions script to register action functions
+        _interpreter.eval(actionsContent);
+        
+        // Process any logs from Hetu script execution
+        _processHetuLogs();
+        
+        // Verify that submit_customer function was registered
+        try {
+          final func = _interpreter.fetch('submit_customer');
+          debugPrint('[ContainerAppShell] submit_customer function registered successfully');
+        } catch (e) {
+          final errorMsg = 'submit_customer function not found after loading actions.ht: $e';
+          debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+          debugPrint('[ContainerAppShell] This may indicate a syntax error in actions.ht or the function was not defined');
+          throw Exception('Step: Loading actions - File: actions.ht - $errorMsg');
+        }
+        
+        debugPrint('[ContainerAppShell] Actions loaded successfully');
+      } catch (e, stackTrace) {
+        // Re-throw if it's our own exception, otherwise wrap it
+        if (e.toString().contains('Step: Loading actions')) {
+          rethrow;
+        }
+        final errorMsg = 'Failed to load actions from actions.ht: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        final actionsContent = assets['actions.ht'] ?? '';
+        if (actionsContent.isNotEmpty) {
+          final preview = actionsContent.length > 200 
+              ? actionsContent.substring(0, 200) 
+              : actionsContent;
+          debugPrint('[ContainerAppShell] Actions content preview: $preview...');
+        }
+        throw Exception('Step: Loading actions - File: actions.ht - $errorMsg');
+      }
+
       // Load UI
       debugPrint('[ContainerAppShell] Loading UI');
       setState(() {
@@ -457,6 +668,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         return 'Loading workflows...';
       case LoadingStep.loadingRules:
         return 'Loading rules...';
+      case LoadingStep.loadingActions:
+        return 'Loading actions...';
       case LoadingStep.loadingUI:
         return 'Loading UI...';
       case LoadingStep.complete:
@@ -467,15 +680,17 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   double _getProgress() {
     switch (_currentStep) {
       case LoadingStep.fetchingAssets:
-        return 0.15;
+        return 0.12;
       case LoadingStep.loadingSchemas:
-        return 0.30;
+        return 0.25;
       case LoadingStep.initializingDatabase:
-        return 0.50;
+        return 0.40;
       case LoadingStep.loadingWorkflows:
-        return 0.65;
+        return 0.55;
       case LoadingStep.loadingRules:
-        return 0.80;
+        return 0.70;
+      case LoadingStep.loadingActions:
+        return 0.85;
       case LoadingStep.loadingUI:
         return 0.95;
       case LoadingStep.complete:
@@ -490,11 +705,14 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       return _buildLandingScreen();
     }
 
-    // If UI is loaded, wrap it with HetuInterpreterProvider so widgets can access the interpreter
+    // If UI is loaded, wrap it with providers so widgets can access the interpreter and database
     if (!_isLoading && _loadedUI != null && _errorMessage == null) {
-      return HetuInterpreterProvider(
-        interpreter: _interpreter,
-        child: _loadedUI!,
+      return DatabaseAPIProvider(
+        databaseAPI: _databaseAPI,
+        child: HetuInterpreterProvider(
+          interpreter: _interpreter,
+          child: _loadedUI!,
+        ),
       );
     }
 
@@ -627,6 +845,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       LoadingStep.initializingDatabase,
       LoadingStep.loadingWorkflows,
       LoadingStep.loadingRules,
+      LoadingStep.loadingActions,
       LoadingStep.loadingUI,
     ];
 
@@ -691,6 +910,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         return 'Loading workflows';
       case LoadingStep.loadingRules:
         return 'Loading rules';
+      case LoadingStep.loadingActions:
+        return 'Loading actions';
       case LoadingStep.loadingUI:
         return 'Loading UI';
       case LoadingStep.complete:

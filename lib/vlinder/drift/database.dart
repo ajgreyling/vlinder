@@ -76,17 +76,146 @@ class VlinderDatabase {
   }
 
   /// Execute custom SQL statement
-  Future<void> customStatement(String sql) async {
+  Future<void> customStatement(String sql, [List<dynamic>? params]) async {
     try {
       // Use sqlite3 directly for custom SQL execution
       final db = await _getSqliteDatabase();
-      db.execute(sql);
+      if (params != null && params.isNotEmpty) {
+        final stmt = db.prepare(sql);
+        try {
+          final boundParams = _convertParameters(params);
+          stmt.execute(boundParams);
+        } finally {
+          stmt.dispose();
+        }
+      } else {
+        db.execute(sql);
+      }
     } catch (e) {
       debugPrint('[VlinderDatabase] Error executing SQL: $e');
       debugPrint('[VlinderDatabase] Error type: ${e.runtimeType}');
       debugPrint('[VlinderDatabase] SQL was: $sql');
+      if (params != null) {
+        debugPrint('[VlinderDatabase] Parameters: $params');
+      }
       rethrow;
     }
+  }
+
+  /// Execute a SELECT query and return results
+  /// Returns a list of maps, where each map represents a row
+  Future<List<Map<String, dynamic>>> query(String sql, [List<dynamic>? params]) async {
+    try {
+      final db = await _getSqliteDatabase();
+      final stmt = db.prepare(sql);
+      try {
+        final boundParams = params != null && params.isNotEmpty 
+            ? _convertParameters(params)
+            : [];
+        
+        final resultSet = stmt.select(boundParams);
+        
+        // Get column names from the first row if available, or parse SQL
+        final columnNames = _extractColumnNames(sql, resultSet);
+        
+        final results = <Map<String, dynamic>>[];
+        for (final row in resultSet) {
+          final rowMap = <String, dynamic>{};
+          for (var i = 0; i < row.length && i < columnNames.length; i++) {
+            rowMap[columnNames[i]] = row[i];
+          }
+          results.add(rowMap);
+        }
+        
+        return results;
+      } finally {
+        stmt.dispose();
+      }
+    } catch (e) {
+      debugPrint('[VlinderDatabase] Error executing query: $e');
+      debugPrint('[VlinderDatabase] Error type: ${e.runtimeType}');
+      debugPrint('[VlinderDatabase] SQL was: $sql');
+      if (params != null) {
+        debugPrint('[VlinderDatabase] Parameters: $params');
+      }
+      rethrow;
+    }
+  }
+
+  /// Extract column names from SQL query or result set
+  /// Falls back to generic column names if extraction fails
+  List<String> _extractColumnNames(String sql, Iterable<Row> resultSet) {
+    // Try to parse column names from SQL SELECT statement
+    final sqlUpper = sql.trim().toUpperCase();
+    if (!sqlUpper.startsWith('SELECT')) {
+      // Not a SELECT query, return empty
+      return [];
+    }
+    
+    // Extract the column list from SELECT ... FROM
+    final selectMatch = RegExp(r'SELECT\s+(.+?)\s+FROM', caseSensitive: false).firstMatch(sql);
+    if (selectMatch != null) {
+      final columnList = selectMatch.group(1)?.trim() ?? '';
+      
+      // If it's SELECT *, we need to get column names from the table
+      if (columnList == '*') {
+        // For SELECT *, try to get column names from the first row
+        // SQLite rows don't expose column names directly, so we'll use generic names
+        // In practice, this should be handled by the caller specifying explicit columns
+        final firstRow = resultSet.isNotEmpty ? resultSet.first : null;
+        if (firstRow != null) {
+          final columnNames = <String>[];
+          for (var i = 0; i < firstRow.length; i++) {
+            columnNames.add('column$i');
+          }
+          return columnNames;
+        }
+        return [];
+      } else {
+        // Parse explicit column names
+        final columns = columnList.split(',').map((c) {
+          // Remove aliases (AS clause) and trim
+          final trimmed = c.trim();
+          // Split on whitespace to get the first part (before AS or alias)
+          final parts = trimmed.split(RegExp(r'\s+'));
+          final cleaned = parts.first;
+          // Remove table prefix if present (table.column)
+          return cleaned.split('.').last;
+        }).toList();
+        return columns;
+      }
+    }
+    
+    // Fallback: use generic column names based on row length
+    final firstRow = resultSet.isNotEmpty ? resultSet.first : null;
+    if (firstRow != null) {
+      final columnNames = <String>[];
+      for (var i = 0; i < firstRow.length; i++) {
+        columnNames.add('column$i');
+      }
+      return columnNames;
+    }
+    
+    return [];
+  }
+
+  /// Convert parameters to sqlite3-compatible types
+  List<Object?> _convertParameters(List<dynamic> params) {
+    return params.map((param) {
+      if (param == null) {
+        return null;
+      } else if (param is int) {
+        return param;
+      } else if (param is double) {
+        return param;
+      } else if (param is String) {
+        return param;
+      } else if (param is bool) {
+        return param ? 1 : 0;
+      } else {
+        return param.toString();
+      }
+    }).toList();
   }
 
   /// Create table from schema using raw SQL
