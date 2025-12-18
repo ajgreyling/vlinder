@@ -61,22 +61,13 @@ class RulesParser {
 
   /// Load rules from rules.ht file content
   Map<String, Rule> loadRules(String scriptContent) {
-    final scriptPreview = scriptContent.length > 300 
-        ? scriptContent.substring(0, 300) 
-        : scriptContent;
-    
     try {
-      debugPrint('[RulesParser] Evaluating rules script (${scriptContent.length} characters)');
-      debugPrint('[RulesParser] Script preview: $scriptPreview...');
-      
       // Rule constructors are already defined in constructor, just evaluate user script
       try {
         interpreter.eval(scriptContent);
-        debugPrint('[RulesParser] Rules script evaluated successfully');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to evaluate rules script: $e';
         debugPrint('[RulesParser] ERROR: $errorMsg');
-        debugPrint('[RulesParser] Script preview: $scriptPreview...');
         debugPrint('[RulesParser] Stack trace: $stackTrace');
         
         // Try to extract line number from Hetu error if available
@@ -119,7 +110,6 @@ class RulesParser {
       }
       final errorMsg = 'Failed to load rules: $e';
       debugPrint('[RulesParser] ERROR: $errorMsg');
-      debugPrint('[RulesParser] Script preview: $scriptPreview...');
       debugPrint('[RulesParser] Stack trace: $stackTrace');
       throw FormatException('[RulesParser] $errorMsg');
     }

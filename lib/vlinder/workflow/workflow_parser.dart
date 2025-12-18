@@ -89,22 +89,13 @@ class WorkflowParser {
 
   /// Load workflows from workflows.ht file content
   Map<String, Workflow> loadWorkflows(String scriptContent) {
-    final scriptPreview = scriptContent.length > 300 
-        ? scriptContent.substring(0, 300) 
-        : scriptContent;
-    
     try {
-      debugPrint('[WorkflowParser] Evaluating workflow script (${scriptContent.length} characters)');
-      debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
-      
       // Workflow constructors are already defined in constructor, just evaluate user script
       try {
         interpreter.eval(scriptContent);
-        debugPrint('[WorkflowParser] Workflow script evaluated successfully');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to evaluate workflow script: $e';
         debugPrint('[WorkflowParser] ERROR: $errorMsg');
-        debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
         debugPrint('[WorkflowParser] Stack trace: $stackTrace');
         
         // Try to extract line number from Hetu error if available
@@ -147,7 +138,6 @@ class WorkflowParser {
       }
       final errorMsg = 'Failed to load workflows: $e';
       debugPrint('[WorkflowParser] ERROR: $errorMsg');
-      debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
       debugPrint('[WorkflowParser] Stack trace: $stackTrace');
       throw FormatException('[WorkflowParser] $errorMsg');
     }

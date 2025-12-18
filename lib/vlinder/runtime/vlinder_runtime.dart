@@ -226,7 +226,6 @@ class VlinderRuntime {
   ) {
     final text = properties['text'] as String? ?? properties['value'] as String? ?? '';
     final style = properties['style'] as String?;
-    debugPrint('[VlinderRuntime] Building Text widget: text="$text", style=$style');
     
     TextStyle? textStyle;
     if (style == 'headline') {
@@ -256,37 +255,25 @@ class VlinderRuntime {
   /// Load and parse a ui.ht file
   /// Returns a widget tree that can be displayed
   Widget loadUI(String scriptContent, BuildContext context) {
-    final scriptPreview = scriptContent.length > 200 
-        ? scriptContent.substring(0, 200) 
-        : scriptContent;
-    
     try {
-      debugPrint('[VlinderRuntime] loadUI called with script length: ${scriptContent.length}');
-      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
-      
       // Parse the Hetu script
-      debugPrint('[VlinderRuntime] Parsing UI script...');
       ParsedWidget parsedWidget;
       try {
         parsedWidget = parser.parse(scriptContent);
-        debugPrint('[VlinderRuntime] Parse successful: widgetName=${parsedWidget.widgetName}, properties=${parsedWidget.properties.keys.join(", ")}, childrenCount=${parsedWidget.children.length}');
         
         // Process any logs from Hetu script execution
         _processHetuLogs();
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to parse UI script: $e';
         debugPrint('[VlinderRuntime] ERROR: $errorMsg');
-        debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
         debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
         return _buildErrorWidget('Failed to parse UI: $e');
       }
 
       // Build Flutter widget tree
-      debugPrint('[VlinderRuntime] Building widget tree...');
       Widget widget;
       try {
         widget = parser.buildWidgetTree(context, parsedWidget);
-        debugPrint('[VlinderRuntime] Widget tree built successfully: ${widget.runtimeType}');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to build widget tree for ${parsedWidget.widgetName}: $e';
         debugPrint('[VlinderRuntime] ERROR: $errorMsg');
@@ -301,7 +288,6 @@ class VlinderRuntime {
     } catch (e, stackTrace) {
       final errorMsg = 'Unexpected error in loadUI: $e';
       debugPrint('[VlinderRuntime] ERROR: $errorMsg');
-      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
       debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
       return _buildErrorWidget('Failed to load UI: $e');
     }

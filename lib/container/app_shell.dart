@@ -222,12 +222,6 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       Map<String, EntitySchema> schemas;
       try {
         final schemaContent = assets['schema.ht'] ?? '';
-        final schemaPreview = schemaContent.length > 200 
-            ? schemaContent.substring(0, 200) 
-            : schemaContent;
-        debugPrint('[ContainerAppShell] Schema content length: ${schemaContent.length} characters');
-        debugPrint('[ContainerAppShell] Schema preview: $schemaPreview...');
-        
         final schemaLoader = SchemaLoader(interpreter: _interpreter);
         schemas = schemaLoader.loadSchemas(schemaContent);
         
@@ -285,12 +279,6 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       });
       try {
         final workflowContent = assets['workflows.ht'] ?? '';
-        final workflowPreview = workflowContent.length > 200 
-            ? workflowContent.substring(0, 200) 
-            : workflowContent;
-        debugPrint('[ContainerAppShell] Workflow content length: ${workflowContent.length} characters');
-        debugPrint('[ContainerAppShell] Workflow preview: $workflowPreview...');
-        
         final workflowParser = WorkflowParser(interpreter: _interpreter);
         workflowParser.loadWorkflows(workflowContent);
         
@@ -319,12 +307,6 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       });
       try {
         final rulesContent = assets['rules.ht'] ?? '';
-        final rulesPreview = rulesContent.length > 200 
-            ? rulesContent.substring(0, 200) 
-            : rulesContent;
-        debugPrint('[ContainerAppShell] Rules content length: ${rulesContent.length} characters');
-        debugPrint('[ContainerAppShell] Rules preview: $rulesPreview...');
-        
         final rulesParser = RulesParser(interpreter: _interpreter);
         rulesParser.loadRules(rulesContent);
         
@@ -357,15 +339,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
           debugPrint('[ContainerAppShell] ERROR: No UI content found in assets');
           throw Exception('Step: Loading UI - File: ui.ht - No UI content found');
         }
-        debugPrint('[ContainerAppShell] UI content length: ${uiContent.length} characters');
-        final uiPreview = uiContent.length > 300 
-            ? uiContent.substring(0, 300) 
-            : uiContent;
-        debugPrint('[ContainerAppShell] UI content preview: $uiPreview...');
 
-        debugPrint('[ContainerAppShell] Calling _runtime.loadUI()...');
         final loadedWidget = _runtime.loadUI(uiContent, context);
-        debugPrint('[ContainerAppShell] loadUI returned widget: ${loadedWidget.runtimeType}');
         
         if (loadedWidget == null) {
           debugPrint('[ContainerAppShell] ERROR: loadUI returned null widget!');
@@ -450,11 +425,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('[ContainerAppShell] build() called: _isLoading=$_isLoading, _loadedUI=${_loadedUI != null ? _loadedUI.runtimeType : "null"}, _errorMessage=$_errorMessage');
-    
     // If UI is loaded, wrap it with HetuInterpreterProvider so widgets can access the interpreter
     if (!_isLoading && _loadedUI != null && _errorMessage == null) {
-      debugPrint('[ContainerAppShell] Returning loaded UI widget wrapped with HetuInterpreterProvider: ${_loadedUI.runtimeType}');
       return HetuInterpreterProvider(
         interpreter: _interpreter,
         child: _loadedUI!,

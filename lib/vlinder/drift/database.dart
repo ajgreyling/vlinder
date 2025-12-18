@@ -77,12 +77,10 @@ class VlinderDatabase {
 
   /// Execute custom SQL statement
   Future<void> customStatement(String sql) async {
-    debugPrint('[VlinderDatabase] Executing SQL: $sql');
     try {
       // Use sqlite3 directly for custom SQL execution
       final db = await _getSqliteDatabase();
       db.execute(sql);
-      debugPrint('[VlinderDatabase] SQL executed successfully');
     } catch (e) {
       debugPrint('[VlinderDatabase] Error executing SQL: $e');
       debugPrint('[VlinderDatabase] Error type: ${e.runtimeType}');
@@ -94,7 +92,6 @@ class VlinderDatabase {
   /// Create table from schema using raw SQL
   Future<void> createTableFromSchema(EntitySchema schema) async {
     debugPrint('[VlinderDatabase] Creating table from schema: ${schema.name}');
-    debugPrint('[VlinderDatabase] Schema has ${schema.fields.length} fields');
     
     final buffer = StringBuffer();
     buffer.write('CREATE TABLE IF NOT EXISTS ${schema.name.toLowerCase()} (');
@@ -109,20 +106,17 @@ class VlinderDatabase {
           : '';
       
       columns.add('${field.name} $sqlType $nullable $defaultValue');
-      debugPrint('[VlinderDatabase]   Field: ${field.name} ($sqlType, required: ${field.required})');
     }
     
     buffer.write(columns.join(', '));
     
     if (schema.primaryKey != null) {
       buffer.write(', PRIMARY KEY (${schema.primaryKey})');
-      debugPrint('[VlinderDatabase]   Primary key: ${schema.primaryKey}');
     }
     
     buffer.write(')');
     
     final sql = buffer.toString();
-    debugPrint('[VlinderDatabase] Generated SQL: $sql');
     
     await customStatement(sql);
     debugPrint('[VlinderDatabase] Table ${schema.name} created successfully');

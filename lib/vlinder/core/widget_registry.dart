@@ -51,11 +51,6 @@ class WidgetRegistry {
     Map<String, dynamic> properties,
     List<Widget>? children,
   ) {
-    debugPrint('[WidgetRegistry] buildWidget: Requesting widget "$widgetName"');
-    debugPrint('[WidgetRegistry] buildWidget: Properties: ${properties.keys.join(", ")}');
-    debugPrint('[WidgetRegistry] buildWidget: Children count: ${children?.length ?? 0}');
-    debugPrint('[WidgetRegistry] buildWidget: Registered widgets: ${_builders.keys.join(", ")}');
-    
     final builder = _builders[widgetName];
     if (builder == null) {
       debugPrint('[WidgetRegistry] ERROR: Widget "$widgetName" is not registered!');
@@ -66,10 +61,8 @@ class WidgetRegistry {
       );
     }
     
-    debugPrint('[WidgetRegistry] buildWidget: Found builder for "$widgetName", calling builder...');
     try {
       final widget = builder(context, properties, children);
-      debugPrint('[WidgetRegistry] buildWidget: Successfully built widget "$widgetName": ${widget.runtimeType}');
       return widget;
     } catch (e, stackTrace) {
       debugPrint('[WidgetRegistry] ERROR: Failed to build widget "$widgetName": $e');

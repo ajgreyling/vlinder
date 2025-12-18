@@ -57,22 +57,13 @@ class SchemaLoader {
   /// Load schemas from schema.ht file content
   /// Returns a map of entity names to EntitySchema objects
   Map<String, EntitySchema> loadSchemas(String scriptContent) {
-    final scriptPreview = scriptContent.length > 300 
-        ? scriptContent.substring(0, 300) 
-        : scriptContent;
-    
     try {
-      debugPrint('[SchemaLoader] Evaluating schema script (${scriptContent.length} characters)');
-      debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
-      
       // Schema constructors are already defined in constructor, just evaluate user script
       try {
         interpreter.eval(scriptContent);
-        debugPrint('[SchemaLoader] Schema script evaluated successfully');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to evaluate schema script: $e';
         debugPrint('[SchemaLoader] ERROR: $errorMsg');
-        debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
         debugPrint('[SchemaLoader] Stack trace: $stackTrace');
         
         // Try to extract line number from Hetu error if available
@@ -117,7 +108,6 @@ class SchemaLoader {
       }
       final errorMsg = 'Failed to load schemas: $e';
       debugPrint('[SchemaLoader] ERROR: $errorMsg');
-      debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
       debugPrint('[SchemaLoader] Stack trace: $stackTrace');
       throw FormatException('[SchemaLoader] $errorMsg');
     }

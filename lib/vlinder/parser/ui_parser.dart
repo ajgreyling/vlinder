@@ -166,14 +166,9 @@ class UIParser {
         : scriptContent;
     
     try {
-      debugPrint('[UIParser] Parsing UI script (${scriptContent.length} characters)');
-      debugPrint('[UIParser] Script preview: $scriptPreview...');
-      
       // Widget constructors are already defined in constructor, just evaluate user script
-      debugPrint('[UIParser] Evaluating Hetu script...');
       try {
         interpreter.eval(scriptContent);
-        debugPrint('[UIParser] UI script evaluated successfully');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to evaluate UI script: $e';
         debugPrint('[UIParser] ERROR: $errorMsg');
@@ -192,61 +187,29 @@ class UIParser {
       // Try to get the 'screen' variable (common root widget)
       dynamic screenValue;
       try {
-        debugPrint('[UIParser] Attempting to fetch "screen" variable...');
         screenValue = interpreter.fetch('screen');
-        debugPrint('[UIParser] Successfully fetched "screen" variable: ${screenValue.runtimeType}');
-        
-        // Debug: Inspect the screen value immediately after fetching
-        if (screenValue is HTStruct) {
-          debugPrint('[UIParser] Screen HTStruct keys immediately after fetch: ${screenValue.keys.join(", ")}');
-          if (screenValue.containsKey('children')) {
-            final childrenValue = screenValue['children'];
-            debugPrint('[UIParser] Children value type immediately after fetch: ${childrenValue.runtimeType}');
-            if (childrenValue is List) {
-              debugPrint('[UIParser] Children list length immediately after fetch: ${childrenValue.length}');
-              if (childrenValue.isNotEmpty) {
-                debugPrint('[UIParser] First child type immediately after fetch: ${childrenValue[0].runtimeType}');
-              }
-            }
-          } else {
-            debugPrint('[UIParser] WARNING: Screen HTStruct does not contain "children" key!');
-          }
-        }
       } catch (e) {
-        debugPrint('[UIParser] Failed to fetch "screen": $e');
         // Try alternative names
         try {
-          debugPrint('[UIParser] Attempting to fetch "Screen" variable...');
           screenValue = interpreter.fetch('Screen');
-          debugPrint('[UIParser] Successfully fetched "Screen" variable: ${screenValue.runtimeType}');
         } catch (_) {
-          debugPrint('[UIParser] Failed to fetch "Screen", trying to find root widget...');
           // Try to find any variable that's a widget
           screenValue = _findRootWidget();
-          if (screenValue != null) {
-            debugPrint('[UIParser] Found root widget: ${screenValue.runtimeType}');
-          } else {
-            debugPrint('[UIParser] No root widget found');
-          }
         }
       }
 
       if (screenValue != null) {
-        debugPrint('[UIParser] Parsing HTValue to ParsedWidget...');
         final parsed = parseFromHTValue(screenValue);
-        debugPrint('[UIParser] Parsed widget: ${parsed.widgetName} with ${parsed.children.length} children');
         return parsed;
       }
 
       // Fallback: try to extract from script string
-      debugPrint('[UIParser] Falling back to string-based extraction...');
       final widget = _extractWidgetTree(scriptContent);
       
       if (widget == null) {
         throw FormatException('No valid widget definition found in script. Expected a variable named "screen" or widget definitions.');
       }
 
-      debugPrint('[UIParser] Extracted widget from string: ${widget.widgetName}');
       return widget;
     } catch (e, stackTrace) {
       if (e is FormatException && e.message.contains('[UIParser]')) {
@@ -417,20 +380,11 @@ class UIParser {
 
   /// Build Flutter widget tree from parsed widget definition
   Widget buildWidgetTree(BuildContext context, ParsedWidget parsedWidget) {
-    debugPrint('[UIParser] buildWidgetTree: building ${parsedWidget.widgetName} with ${parsedWidget.children.length} children');
-    debugPrint('[UIParser] Properties: ${parsedWidget.properties.keys.join(", ")}');
-    
     try {
       final children = parsedWidget.children
-          .map((child) {
-            debugPrint('[UIParser] Building child widget: ${child.widgetName}');
-            return buildWidgetTree(context, child);
-          })
+          .map((child) => buildWidgetTree(context, child))
           .toList();
 
-      debugPrint('[UIParser] Built ${children.length} child widgets for ${parsedWidget.widgetName}');
-      debugPrint('[UIParser] Calling registry.buildWidget for ${parsedWidget.widgetName}...');
-      
       final widget = registry.buildWidget(
         parsedWidget.widgetName,
         context,
@@ -438,7 +392,6 @@ class UIParser {
         children.isEmpty ? null : children,
       );
       
-      debugPrint('[UIParser] Successfully built widget: ${widget.runtimeType}');
       return widget;
     } catch (e, stackTrace) {
       debugPrint('[UIParser] Error building widget tree for ${parsedWidget.widgetName}: $e');
@@ -457,20 +410,6 @@ class UIParser {
 
     // Extract widget name using improved detection
     final widgetName = _extractWidgetName(value);
-    debugPrint('[UIParser] parseFromHTValue: Parsing widget "$widgetName"');
-    debugPrint('[UIParser] parseFromHTValue: HTStruct keys: ${value.keys.join(", ")}');
-    
-    // Debug: Print all values to see what we're working with
-    if (widgetName == 'Screen') {
-      debugPrint('[UIParser] parseFromHTValue: DEBUG - Screen HTStruct contents:');
-      for (final key in value.keys) {
-        final val = value[key];
-        debugPrint('[UIParser] parseFromHTValue:   $key: type=${val.runtimeType}, value=$val');
-        if (key == 'children' && val is List) {
-          debugPrint('[UIParser] parseFromHTValue:   children.length=${val.length}');
-        }
-      }
-    }
     
     final properties = <String, dynamic>{};
     final children = <ParsedWidget>[];
@@ -481,12 +420,8 @@ class UIParser {
       
       // Handle children arrays (can be 'children' or 'fields')
       if (keyStr == 'children' || keyStr == 'fields') {
-        debugPrint('[UIParser] parseFromHTValue: Found $keyStr, type: ${val.runtimeType}, value: $val');
-        debugPrint('[UIParser] parseFromHTValue: $keyStr is null: ${val == null}');
-        
         // Handle null case
         if (val == null) {
-          debugPrint('[UIParser] parseFromHTValue: $keyStr is null, skipping');
           continue;
         }
         
@@ -494,7 +429,6 @@ class UIParser {
         // Form widgets use 'fields' for their child widgets, 'children' is typically empty
         if (keyStr == 'children' && value.containsKey('fields')) {
           if (val is List && (val as List).isEmpty) {
-            debugPrint('[UIParser] parseFromHTValue: Skipping empty children array (Form widget uses fields instead)');
             continue;
           }
         }
@@ -503,22 +437,12 @@ class UIParser {
         // This preserves HTStruct objects that would be lost in conversion
         if (val is List || val is Iterable) {
           final iterable = val is List ? val : (val as Iterable).toList();
-          debugPrint('[UIParser] parseFromHTValue: Found $keyStr array (${val.runtimeType}) with ${iterable.length} items');
-          if (iterable.isNotEmpty) {
-            debugPrint('[UIParser] parseFromHTValue: List contents types: ${iterable.map((e) => e.runtimeType).join(", ")}');
-          } else {
-            debugPrint('[UIParser] parseFromHTValue: WARNING - $keyStr array is EMPTY!');
-            debugPrint('[UIParser] parseFromHTValue: This suggests the children were not properly stored in the HTStruct');
-          }
           // Iterate directly over the list without converting
           for (var i = 0; i < iterable.length; i++) {
             final child = iterable[i];
-            debugPrint('[UIParser] parseFromHTValue: Child $i type: ${child.runtimeType}, value: $child');
             
             if (child is HTStruct) {
               // Parse HTStruct directly - this is the preferred path
-              debugPrint('[UIParser] parseFromHTValue: Parsing child $i of $keyStr (HTStruct)');
-              debugPrint('[UIParser] parseFromHTValue: Child $i keys: ${child.keys.join(", ")}');
               try {
                 children.add(parseFromHTValue(child));
               } catch (e) {
@@ -526,7 +450,6 @@ class UIParser {
               }
             } else if (child is Map) {
               // Handle Map (from previous conversion or other source)
-              debugPrint('[UIParser] parseFromHTValue: Parsing child $i of $keyStr (Map)');
               if (child.containsKey('widgetType') || 
                   child.containsKey('id') || 
                   child.containsKey('entity') || 
@@ -536,35 +459,21 @@ class UIParser {
                   final childWidget = _parseFromMap(childMap);
                   if (childWidget != null) {
                     children.add(childWidget);
-                  } else {
-                    debugPrint('[UIParser] parseFromHTValue: _parseFromMap returned null for child $i');
                   }
                 } catch (e) {
                   debugPrint('[UIParser] parseFromHTValue: Failed to parse child $i from Map: $e');
                 }
-              } else {
-                debugPrint('[UIParser] parseFromHTValue: Child $i Map does not contain widget keys');
               }
-            } else {
-              // Handle primitive values in arrays
-              debugPrint('[UIParser] Warning: Non-struct child in $keyStr[$i]: ${child.runtimeType}, value: $child');
             }
           }
-          debugPrint('[UIParser] parseFromHTValue: Parsed ${children.length} children from $keyStr (input had ${iterable.length} items)');
         } else {
           // Not a List - try converting to see what we get
-          debugPrint('[UIParser] parseFromHTValue: $keyStr is not a List (type: ${val.runtimeType}), attempting conversion...');
-          debugPrint('[UIParser] parseFromHTValue: $keyStr value before conversion: $val');
           final dartVal = WidgetRegistry.htValueToDart(val);
-          debugPrint('[UIParser] parseFromHTValue: Converted $keyStr to Dart type: ${dartVal.runtimeType}, value: $dartVal');
           
           if (dartVal is List) {
-            debugPrint('[UIParser] parseFromHTValue: After conversion, found $keyStr array with ${dartVal.length} items');
-            debugPrint('[UIParser] parseFromHTValue: Converted list contents: ${dartVal.map((e) => e.runtimeType).join(", ")}');
             // Parse children from converted list
             for (var i = 0; i < dartVal.length; i++) {
               final child = dartVal[i];
-              debugPrint('[UIParser] parseFromHTValue: Child $i type: ${child.runtimeType}');
               
               if (child is Map) {
                 if (child.containsKey('widgetType') || 
@@ -582,7 +491,6 @@ class UIParser {
                   }
                 }
               } else if (child is HTStruct) {
-                debugPrint('[UIParser] parseFromHTValue: Parsing child $i of $keyStr (HTStruct after conversion)');
                 try {
                   children.add(parseFromHTValue(child));
                 } catch (e) {
@@ -590,19 +498,13 @@ class UIParser {
                 }
               }
             }
-            debugPrint('[UIParser] parseFromHTValue: Parsed ${children.length} children from converted $keyStr');
-          } else {
-            debugPrint('[UIParser] parseFromHTValue: $keyStr is not a List after conversion, type: ${dartVal.runtimeType}, value: $dartVal');
           }
         }
       } else if (keyStr != 'widgetType') {
         // Store property, but skip widgetType (it's metadata)
         properties[keyStr] = WidgetRegistry.htValueToDart(val);
-        debugPrint('[UIParser] parseFromHTValue: Stored property "$keyStr"');
       }
     }
-
-    debugPrint('[UIParser] parseFromHTValue: Completed parsing "$widgetName" with ${properties.length} properties and ${children.length} children');
     return ParsedWidget(
       widgetName: widgetName,
       properties: properties,
