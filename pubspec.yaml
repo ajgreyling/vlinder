@@ -37,6 +37,8 @@ flutter:
   uses-material-design: true
   
   assets:
-    - example/ui.ht
-    - example/schema.ht
+    - sample_app/assets/schema.ht
+    - sample_app/assets/ui.ht
+    - sample_app/assets/workflows.ht
+    - sample_app/assets/rules.ht
 
