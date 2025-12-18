@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 
 /// Type definition for a widget builder function
 /// Takes a BuildContext and a map of properties from Hetu script
@@ -61,32 +62,32 @@ class WidgetRegistry {
   }
 
   /// Convert Hetu HTValue to Dart Map
-  static Map<String, dynamic> htValueToMap(HTValue value) {
+  static Map<String, dynamic> htValueToMap(dynamic value) {
     if (value is HTStruct) {
       final map = <String, dynamic>{};
-      value.forEach((key, val) {
-        map[key.toString()] = htValueToDart(val);
-      });
+      for (final key in value.keys) {
+        map[key] = htValueToDart(value[key]);
+      }
       return map;
     }
     throw ArgumentError('Expected HTStruct, got ${value.runtimeType}');
   }
 
   /// Convert Hetu HTValue to Dart value
-  static dynamic htValueToDart(HTValue value) {
+  static dynamic htValueToDart(dynamic value) {
     if (value is HTStruct) {
       return htValueToMap(value);
-    } else if (value is HTList) {
+    } else if (value is List) {
       return value.map((e) => htValueToDart(e)).toList();
-    } else if (value is HTString) {
-      return value.value;
-    } else if (value is HTInt) {
-      return value.value;
-    } else if (value is HTFloat) {
-      return value.value;
-    } else if (value is HTBool) {
-      return value.value;
-    } else if (value is HTNull) {
+    } else if (value is String) {
+      return value;
+    } else if (value is int) {
+      return value;
+    } else if (value is double) {
+      return value;
+    } else if (value is bool) {
+      return value;
+    } else if (value == null) {
       return null;
     }
     return value.toString();

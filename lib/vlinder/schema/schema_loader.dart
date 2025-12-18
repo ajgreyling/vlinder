@@ -1,4 +1,5 @@
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 import '../binding/drift_binding.dart';
 
 /// Loader for parsing schema.ht files and converting to EntitySchema objects
@@ -58,16 +59,17 @@ class SchemaLoader {
       // Look for schema variables (common patterns: customerSchema, productSchema, etc.)
       // Or look for a schemas map/object
       try {
-        final schemasValue = interpreter.getType('schemas');
+        final schemasValue = interpreter.fetch('schemas');
         if (schemasValue is HTStruct) {
-          schemasValue.forEach((key, value) {
+          for (final key in schemasValue.keys) {
+            final value = schemasValue[key];
             if (value is HTStruct) {
               final schema = _parseSchema(value);
               if (schema != null) {
                 schemas[schema.name] = schema;
               }
             }
-          });
+          }
         }
       } catch (_) {
         // Try individual schema variables
@@ -87,7 +89,7 @@ class SchemaLoader {
     
     for (final name in commonNames) {
       try {
-        final value = interpreter.getType(name);
+        final value = interpreter.fetch(name);
         if (value is HTStruct) {
           final schema = _parseSchema(value);
           if (schema != null) {
@@ -126,14 +128,15 @@ class SchemaLoader {
       // Parse fields
       final fieldsValue = struct['fields'];
       if (fieldsValue is HTStruct) {
-        fieldsValue.forEach((fieldName, fieldValue) {
+        for (final fieldName in fieldsValue.keys) {
+          final fieldValue = fieldsValue[fieldName];
           if (fieldValue is HTStruct) {
-            final field = _parseField(fieldName.toString(), fieldValue);
+            final field = _parseField(fieldName, fieldValue);
             if (field != null) {
               fieldsMap[field.name] = field;
             }
           }
-        });
+        }
       }
 
       return EntitySchema(
@@ -155,8 +158,8 @@ class SchemaLoader {
           : 'text'; // Default to text
       
       final required = fieldStruct.containsKey('required')
-          ? (fieldStruct['required'] is HTBool
-              ? (fieldStruct['required'] as HTBool).value
+          ? (fieldStruct['required'] is bool
+              ? fieldStruct['required'] as bool
               : fieldStruct['required'].toString() == 'true')
           : false;
       
@@ -169,9 +172,9 @@ class SchemaLoader {
         final constraintsValue = fieldStruct['constraints'];
         if (constraintsValue is HTStruct) {
           constraints = {};
-          constraintsValue.forEach((key, value) {
-            constraints![key.toString()] = _convertHTValue(value);
-          });
+          for (final key in constraintsValue.keys) {
+            constraints![key] = _convertHTValue(constraintsValue[key]);
+          }
         }
       }
 
@@ -188,16 +191,16 @@ class SchemaLoader {
   }
 
   /// Convert HTValue to Dart value
-  dynamic _convertHTValue(HTValue value) {
-    if (value is HTString) {
-      return value.value;
-    } else if (value is HTInt) {
-      return value.value;
-    } else if (value is HTFloat) {
-      return value.value;
-    } else if (value is HTBool) {
-      return value.value;
-    } else if (value is HTNull) {
+  dynamic _convertHTValue(dynamic value) {
+    if (value is String) {
+      return value;
+    } else if (value is int) {
+      return value;
+    } else if (value is double) {
+      return value;
+    } else if (value is bool) {
+      return value;
+    } else if (value == null) {
       return null;
     }
     return value.toString();

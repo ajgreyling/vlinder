@@ -1,0 +1,127 @@
+# Vlinder Dart Code Rules
+
+## Hetu Script API Usage (0.4.2+1)
+
+### Initialization
+- **ALWAYS** call `hetu.init()` after creating a `Hetu()` instance and before using any other methods
+- Example:
+```dart
+final hetu = Hetu();
+hetu.init(); // REQUIRED - must be called first
+```
+
+### Variable Access
+- Use `hetu.fetch(String varName)` to get variables - **NOT** `getType()`
+- Returns `dynamic` - can be `HTStruct`, `HTFunction`, or Dart primitive types
+- Example:
+```dart
+final value = hetu.fetch('variableName');
+if (value is HTStruct) {
+  // Access struct members
+}
+```
+
+### Function Invocation
+- Use `hetu.invoke(String funcName, {List<dynamic> positionalArgs, Map<String, dynamic> namedArgs})` - **NOT** `call()`
+- Example:
+```dart
+final result = hetu.invoke('functionName', positionalArgs: [1, 2, 3]);
+```
+
+### Type Checking
+- **DO NOT** use `HTString`, `HTInt`, `HTFloat`, `HTBool`, `HTNull`, `HTList` - these types don't exist
+- Use Dart native types: `String`, `int`, `double`, `bool`, `null`, `List`
+- Example:
+```dart
+// CORRECT
+if (value is String) { ... }
+if (value is int) { ... }
+if (value == null) { ... }
+if (value is List) { ... }
+
+// INCORRECT - these types don't exist
+if (value is HTString) { ... }  // WRONG
+if (value is HTInt) { ... }      // WRONG
+```
+
+### HTStruct Usage
+- Import `package:hetu_script/values.dart` when using `HTStruct`
+- Access values using `struct[key]` or iterate with `for (final key in struct.keys)`
+- Values stored in HTStruct are Dart native types
+- Example:
+```dart
+import 'package:hetu_script/values.dart';
+
+if (value is HTStruct) {
+  // Iterate over keys
+  for (final key in value.keys) {
+    final val = value[key]; // Returns Dart native type
+  }
+  
+  // Direct access
+  final name = value['name']; // String (Dart type)
+  final age = value['age'];   // int (Dart type)
+}
+```
+
+### Script Evaluation
+- Use `hetu.eval(String script)` to evaluate Hetu script strings
+- Returns the result of the last expression
+- Example:
+```dart
+final result = hetu.eval('final x = 42; x * 2'); // Returns 84
+```
+
+## Architecture Patterns
+
+### Vlinder Runtime
+- Use `VlinderRuntime` to load and parse UI files
+- Runtime automatically initializes Hetu interpreter
+- Example:
+```dart
+final runtime = VlinderRuntime();
+final widget = runtime.loadUI(scriptContent, context);
+```
+
+### Widget Registry
+- All widgets must be registered in `WidgetRegistry`
+- Use `WidgetRegistry.htValueToDart()` to convert Hetu values to Dart types
+- Example:
+```dart
+final dartValue = WidgetRegistry.htValueToDart(hetuValue);
+```
+
+### Parsers
+- Parsers (UIParser, SchemaLoader, WorkflowParser, RulesParser) expect Hetu interpreter to be initialized
+- They use `interpreter.fetch()` to get variables after `eval()`
+- They iterate HTStruct using `for (final key in struct.keys)`
+
+### Action Handler
+- Use `ActionHandler` for executing Hetu script actions
+- Actions are invoked using `interpreter.invoke()`
+- Example:
+```dart
+final handler = ActionHandler(interpreter: hetu);
+await handler.executeAction('actionName', params: {...});
+```
+
+## File Organization
+
+- `lib/vlinder/runtime/` - Runtime engine and action handlers
+- `lib/vlinder/parser/` - Parsers for .ht files
+- `lib/vlinder/core/` - Core utilities (WidgetRegistry)
+- `lib/vlinder/widgets/` - Vlinder SDK widgets
+- `lib/vlinder/schema/` - Schema loading and parsing
+- `lib/vlinder/workflow/` - Workflow engine and parsing
+- `lib/vlinder/rules/` - Rules engine and parsing
+
+## Best Practices
+
+1. **Always initialize Hetu** - Call `init()` immediately after creating Hetu instance
+2. **Use fetch, not getType** - The method is `fetch()`, not `getType()`
+3. **Use invoke, not call** - The method is `invoke()`, not `call()`
+4. **Check for HTStruct** - Import values.dart and check `value is HTStruct` before accessing
+5. **Iterate with keys** - Use `for (final key in struct.keys)` not `forEach()`
+6. **Type check with Dart types** - Use `String`, `int`, `bool`, etc., not HT* wrapper types
+7. **Handle errors gracefully** - Wrap Hetu operations in try-catch blocks
+

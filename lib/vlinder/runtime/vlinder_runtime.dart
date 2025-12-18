@@ -18,6 +18,7 @@ class VlinderRuntime {
   VlinderRuntime()
       : interpreter = Hetu(),
         registry = WidgetRegistry() {
+    interpreter.init();
     _registerWidgets();
     // Initialize parser with the same registry instance
     parser = UIParser(
@@ -83,7 +84,7 @@ class VlinderRuntime {
   /// Get a value from the Hetu interpreter
   dynamic getValue(String identifier) {
     try {
-      return interpreter.getType(identifier);
+      return interpreter.fetch(identifier);
     } catch (e) {
       debugPrint('Failed to get value "$identifier": $e');
       return null;

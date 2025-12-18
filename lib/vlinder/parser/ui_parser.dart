@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 import '../core/widget_registry.dart';
 
 /// Parsed widget definition from Hetu script
@@ -115,13 +116,13 @@ class UIParser {
       interpreter.eval(fullScript);
 
       // Try to get the 'screen' variable (common root widget)
-      HTValue? screenValue;
+      dynamic screenValue;
       try {
-        screenValue = interpreter.getType('screen');
+        screenValue = interpreter.fetch('screen');
       } catch (e) {
         // Try alternative names
         try {
-          screenValue = interpreter.getType('Screen');
+          screenValue = interpreter.fetch('Screen');
         } catch (_) {
           // Try to find any variable that's a widget
           screenValue = _findRootWidget();
@@ -204,12 +205,12 @@ class UIParser {
   }
 
   /// Find root widget by checking all variables
-  HTValue? _findRootWidget() {
+  dynamic _findRootWidget() {
     // Try common variable names
     final commonNames = ['screen', 'root', 'app', 'main'];
     for (final name in commonNames) {
       try {
-        final value = interpreter.getType(name);
+        final value = interpreter.fetch(name);
         if (value is HTStruct && _isWidget(value)) {
           return value;
         }
@@ -305,7 +306,7 @@ class UIParser {
 
   /// Parse widget from Hetu HTValue (more robust approach)
   /// Recursively parses widget tree with accurate type detection
-  ParsedWidget parseFromHTValue(HTValue value) {
+  ParsedWidget parseFromHTValue(dynamic value) {
     if (value is! HTStruct) {
       throw ArgumentError('Expected HTStruct for widget definition, got ${value.runtimeType}');
     }
@@ -316,11 +317,12 @@ class UIParser {
     final properties = <String, dynamic>{};
     final children = <ParsedWidget>[];
 
-    value.forEach((key, val) {
-      final keyStr = key.toString();
+    for (final key in value.keys) {
+      final keyStr = key;
+      final val = value[key];
       
       // Handle children arrays (can be 'children' or 'fields')
-      if ((keyStr == 'children' || keyStr == 'fields') && val is HTList) {
+      if ((keyStr == 'children' || keyStr == 'fields') && val is List) {
         // Parse children recursively
         for (final child in val) {
           if (child is HTStruct) {
@@ -334,7 +336,7 @@ class UIParser {
         // Store property, but skip widgetType (it's metadata)
         properties[keyStr] = WidgetRegistry.htValueToDart(val);
       }
-    });
+    }
 
     return ParsedWidget(
       widgetName: widgetName,
@@ -349,8 +351,8 @@ class UIParser {
     // First check for explicit widgetType (set by constructor functions)
     if (struct.containsKey('widgetType')) {
       final widgetType = struct['widgetType'];
-      if (widgetType is HTString) {
-        return widgetType.value;
+      if (widgetType is String) {
+        return widgetType;
       }
       return widgetType.toString();
     }

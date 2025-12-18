@@ -32,9 +32,9 @@ class RulesEngine {
       final conditionScript = 'final result = ${rule.condition}';
       interpreter.eval(conditionScript);
       
-      final result = interpreter.getType('result');
-      if (result is HTBool) {
-        return result.value;
+      final result = interpreter.fetch('result');
+      if (result is bool) {
+        return result;
       }
       
       return false;

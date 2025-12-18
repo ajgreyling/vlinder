@@ -29,7 +29,7 @@ class ActionHandler {
 
       // Try to call the action function
       try {
-        final result = interpreter.call(actionName, positionalArgs: []);
+        interpreter.invoke(actionName, positionalArgs: []);
         return;
       } catch (e) {
         // If function doesn't exist, try as a string-based action

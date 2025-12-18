@@ -20,7 +20,7 @@ class ContainerAppShell extends StatefulWidget {
 
 class _ContainerAppShellState extends State<ContainerAppShell> {
   final VlinderRuntime _runtime = VlinderRuntime();
-  final Hetu _interpreter = Hetu();
+  late final Hetu _interpreter;
   final AssetFetcher _fetcher = AssetFetcher();
   
   Widget? _loadedUI;
@@ -31,6 +31,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   @override
   void initState() {
     super.initState();
+    _interpreter = Hetu();
+    _interpreter.init();
     _initializeApp();
   }
 

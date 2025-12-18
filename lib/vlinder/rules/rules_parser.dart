@@ -1,4 +1,5 @@
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 
 /// Rule definition
 class Rule {
@@ -58,16 +59,17 @@ class RulesParser {
 
       // Try to get rules map
       try {
-        final rulesValue = interpreter.getType('rules');
+        final rulesValue = interpreter.fetch('rules');
         if (rulesValue is HTStruct) {
-          rulesValue.forEach((key, value) {
+          for (final key in rulesValue.keys) {
+            final value = rulesValue[key];
             if (value is HTStruct) {
               final rule = _parseRule(value);
               if (rule != null) {
                 rules[rule.id] = rule;
               }
             }
-          });
+          }
         }
       } catch (_) {
         // Try individual rule variables
@@ -87,16 +89,17 @@ class RulesParser {
     
     for (final name in commonNames) {
       try {
-        final value = interpreter.getType(name);
+        final value = interpreter.fetch(name);
         if (value is HTStruct) {
-          value.forEach((key, ruleValue) {
+          for (final key in value.keys) {
+            final ruleValue = value[key];
             if (ruleValue is HTStruct) {
               final rule = _parseRule(ruleValue);
               if (rule != null) {
                 rules[rule.id] = rule;
               }
             }
-          });
+          }
         }
       } catch (_) {
         continue;
@@ -124,9 +127,9 @@ class RulesParser {
       if (struct.containsKey('params')) {
         final paramsValue = struct['params'];
         if (paramsValue is HTStruct) {
-          paramsValue.forEach((key, value) {
-            params[key.toString()] = _convertHTValue(value);
-          });
+          for (final key in paramsValue.keys) {
+            params[key] = _convertHTValue(paramsValue[key]);
+          }
         }
       }
 
@@ -143,16 +146,16 @@ class RulesParser {
   }
 
   /// Convert HTValue to Dart value
-  dynamic _convertHTValue(HTValue value) {
-    if (value is HTString) {
-      return value.value;
-    } else if (value is HTInt) {
-      return value.value;
-    } else if (value is HTFloat) {
-      return value.value;
-    } else if (value is HTBool) {
-      return value.value;
-    } else if (value is HTNull) {
+  dynamic _convertHTValue(dynamic value) {
+    if (value is String) {
+      return value;
+    } else if (value is int) {
+      return value;
+    } else if (value is double) {
+      return value;
+    } else if (value is bool) {
+      return value;
+    } else if (value == null) {
       return null;
     }
     return value.toString();

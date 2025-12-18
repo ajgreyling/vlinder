@@ -1,0 +1,264 @@
+# Vlinder Hetu Script (.ht) File Rules
+
+## File Types
+
+Vlinder uses four types of .ht files:
+- `schema.ht` - Entity schema definitions
+- `ui.ht` - UI widget tree definitions
+- `workflows.ht` - Workflow and step definitions
+- `rules.ht` - Business rules and validation rules
+
+## Schema Files (schema.ht)
+
+### Structure
+- Define entity schemas as struct literals
+- Use variable names ending in `Schema` (e.g., `customerSchema`)
+- Each schema must have: `name`, `primaryKey`, `fields`
+
+### Field Types
+- `'text'` - String/text field
+- `'integer'` - Integer number field
+- `'decimal'` - Decimal/float number field
+- `'date'` - Date field
+- `'boolean'` - Boolean field
+
+### Example:
+```hetu
+final customerSchema = {
+  name: 'Customer',
+  primaryKey: 'id',
+  fields: {
+    id: {
+      type: 'integer',
+      required: true,
+    },
+    name: {
+      type: 'text',
+      required: true,
+      constraints: {
+        maxLength: 100,
+      },
+    },
+    email: {
+      type: 'text',
+      required: false,
+      constraints: {
+        pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$',
+      },
+    },
+  },
+};
+```
+
+### Constraints
+- `maxLength` - Maximum string length
+- `min`, `max` - Numeric range
+- `pattern` - Regex pattern for validation
+
+## UI Files (ui.ht)
+
+### Structure
+- Must define a `screen` variable using `Screen()` function
+- Screen contains `children` array with widgets
+- Forms use `Form()` with `entity` and `fields` array
+
+### Available Widgets
+- `Screen(id, title, children)` - Root screen container
+- `Form(entity, fields, children)` - Form container with entity binding
+- `TextField(field, label, required, placeholder)` - Text input field
+- `NumberField(field, label, type, required, placeholder)` - Numeric input field
+- `ActionButton(label, action, style)` - Action button
+
+### Example:
+```hetu
+final screen = Screen(
+  id: 'customer_form',
+  title: 'Customer Registration',
+  children: [
+    Form(
+      entity: 'Customer',
+      fields: [
+        TextField(
+          field: 'name',
+          label: 'Customer Name',
+          required: true,
+          placeholder: 'Enter customer name',
+        ),
+        NumberField(
+          field: 'age',
+          label: 'Age',
+          type: 'integer',
+          placeholder: 'Enter age',
+        ),
+      ],
+    ),
+    ActionButton(
+      label: 'Submit',
+      action: 'submit_customer',
+      style: 'primary',
+    ),
+  ],
+);
+```
+
+### Widget Properties
+- `id` - Unique identifier (required for Screen)
+- `title` - Display title (Screen)
+- `entity` - Entity name for form binding (Form)
+- `field` - Field name from schema (TextField, NumberField)
+- `label` - Display label
+- `required` - Boolean for required fields
+- `placeholder` - Placeholder text
+- `type` - Field type: 'integer' or 'decimal' (NumberField)
+- `action` - Action identifier (ActionButton)
+- `style` - Button style: 'primary' or 'secondary' (ActionButton)
+
+## Workflow Files (workflows.ht)
+
+### Structure
+- Define workflows as struct literals
+- Use variable names ending in `Workflow` (e.g., `customerRegistrationWorkflow`)
+- Each workflow has: `id`, `label`, `initialStep`, `steps`
+
+### Step Structure
+- Each step has: `id`, `label`, `screenId`, `nextSteps`
+- `nextSteps` is an array of step IDs
+- Empty `nextSteps` array indicates final step
+
+### Example:
+```hetu
+final customerRegistrationWorkflow = {
+  workflowType: 'Workflow',
+  id: 'customer_registration',
+  label: 'Customer Registration',
+  initialStep: 'personal_info',
+  steps: {
+    personal_info: {
+      stepType: 'WorkflowStep',
+      id: 'personal_info',
+      label: 'Personal Information',
+      screenId: 'customer_registration',
+      nextSteps: ['review'],
+    },
+    review: {
+      stepType: 'WorkflowStep',
+      id: 'review',
+      label: 'Review',
+      screenId: 'review_screen',
+      nextSteps: ['submit'],
+    },
+    submit: {
+      stepType: 'WorkflowStep',
+      id: 'submit',
+      label: 'Submit',
+      screenId: 'submit_screen',
+      nextSteps: [],
+    },
+  },
+};
+```
+
+## Rules Files (rules.ht)
+
+### Structure
+- Define rules as struct literals grouped in maps
+- Use descriptive variable names (e.g., `validationRules`, `businessRules`)
+- Each rule has: `id`, `name`, `condition`, `action`, `params`
+
+### Condition Syntax
+- Hetu script expressions that evaluate to boolean
+- Access context via `context.field`, `context.value`, etc.
+- Example conditions:
+  - `context.field == "email" && context.value == null`
+  - `context.value < 0 || context.value > 150`
+  - `context.totalAmount > 1000`
+
+### Action Syntax
+- Hetu script expressions or function calls
+- Examples:
+  - `showError("Email is required")`
+  - `formatPhoneNumber(context.value)`
+  - `applyDiscount(0.1)`
+
+### Example:
+```hetu
+final validationRules = {
+  email_required: {
+    ruleType: 'Rule',
+    id: 'email_required',
+    name: 'Email Required',
+    condition: 'context.field == "email" && context.value == null',
+    action: 'showError("Email is required")',
+  },
+  age_valid: {
+    ruleType: 'Rule',
+    id: 'age_valid',
+    name: 'Age Validation',
+    condition: 'context.field == "age" && (context.value < 0 || context.value > 150)',
+    action: 'showError("Age must be between 0 and 150")',
+  },
+};
+```
+
+## Hetu Script Syntax
+
+### Variables
+- Use `final` for immutable variables
+- Variable names should be camelCase
+- Example: `final customerSchema = {...}`
+
+### Structs
+- Use `{key: value}` syntax for struct literals
+- Nested structs are supported
+- Access with dot notation: `struct.key`
+
+### Arrays
+- Use `[item1, item2]` syntax
+- Can contain structs, primitives, or mixed types
+
+### Functions
+- Widget constructors are functions: `Screen(...)`, `Form(...)`
+- Use named parameters: `TextField(field: 'name', label: 'Name')`
+- Optional parameters can be omitted
+
+### Comments
+- Use `//` for single-line comments
+- Comments are ignored by parser
+
+## Best Practices
+
+1. **Consistent Naming**
+   - Schemas: `*Schema` suffix
+   - Workflows: `*Workflow` suffix
+   - Rules: Group in descriptive maps
+
+2. **Required Fields**
+   - Screen: `id` is required
+   - Schema: `name`, `primaryKey`, `fields` are required
+   - Workflow: `id`, `initialStep`, `steps` are required
+   - Rule: `id` is required
+
+3. **Entity References**
+   - Form `entity` must match a schema `name`
+   - Field names in widgets must match schema field names
+   - Screen IDs in workflows must match Screen `id` values
+
+4. **Type Consistency**
+   - Field types in widgets must match schema field types
+   - NumberField `type` must be 'integer' or 'decimal'
+
+5. **Workflow Structure**
+   - `initialStep` must exist in `steps`
+   - All `nextSteps` IDs must exist in `steps`
+   - At least one step should have empty `nextSteps` (final step)
+
+6. **Rule Conditions**
+   - Must evaluate to boolean
+   - Use `context` object to access form state
+   - Keep conditions simple and readable
+
+7. **Error Handling**
+   - Use descriptive error messages in rule actions
+   - Validate required fields in schemas
+   - Ensure all references are valid
+

@@ -1,4 +1,5 @@
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 
 /// Workflow step definition
 class WorkflowStep {
@@ -86,16 +87,17 @@ class WorkflowParser {
 
       // Try to get workflows map
       try {
-        final workflowsValue = interpreter.getType('workflows');
+        final workflowsValue = interpreter.fetch('workflows');
         if (workflowsValue is HTStruct) {
-          workflowsValue.forEach((key, value) {
+          for (final key in workflowsValue.keys) {
+            final value = workflowsValue[key];
             if (value is HTStruct) {
               final workflow = _parseWorkflow(value);
               if (workflow != null) {
                 workflows[workflow.id] = workflow;
               }
             }
-          });
+          }
         }
       } catch (_) {
         // Try individual workflow variables
@@ -115,7 +117,7 @@ class WorkflowParser {
     
     for (final name in commonNames) {
       try {
-        final value = interpreter.getType(name);
+        final value = interpreter.fetch(name);
         if (value is HTStruct) {
           final workflow = _parseWorkflow(value);
           if (workflow != null) {
@@ -145,14 +147,15 @@ class WorkflowParser {
       if (struct.containsKey('steps')) {
         final stepsValue = struct['steps'];
         if (stepsValue is HTStruct) {
-          stepsValue.forEach((stepId, stepValue) {
+          for (final stepId in stepsValue.keys) {
+            final stepValue = stepsValue[stepId];
             if (stepValue is HTStruct) {
-              final step = _parseStep(stepId.toString(), stepValue);
+              final step = _parseStep(stepId, stepValue);
               if (step != null) {
                 stepsMap[step.id] = step;
               }
             }
-          });
+          }
         }
       }
 
@@ -184,16 +187,16 @@ class WorkflowParser {
       if (stepStruct.containsKey('conditions')) {
         final conditionsValue = stepStruct['conditions'];
         if (conditionsValue is HTStruct) {
-          conditionsValue.forEach((key, value) {
-            conditions[key.toString()] = _convertHTValue(value);
-          });
+          for (final key in conditionsValue.keys) {
+            conditions[key] = _convertHTValue(conditionsValue[key]);
+          }
         }
       }
 
       final nextSteps = <String>[];
       if (stepStruct.containsKey('nextSteps')) {
         final nextStepsValue = stepStruct['nextSteps'];
-        if (nextStepsValue is HTList) {
+        if (nextStepsValue is List) {
           for (final step in nextStepsValue) {
             nextSteps.add(step.toString());
           }
@@ -213,16 +216,16 @@ class WorkflowParser {
   }
 
   /// Convert HTValue to Dart value
-  dynamic _convertHTValue(HTValue value) {
-    if (value is HTString) {
-      return value.value;
-    } else if (value is HTInt) {
-      return value.value;
-    } else if (value is HTFloat) {
-      return value.value;
-    } else if (value is HTBool) {
-      return value.value;
-    } else if (value is HTNull) {
+  dynamic _convertHTValue(dynamic value) {
+    if (value is String) {
+      return value;
+    } else if (value is int) {
+      return value;
+    } else if (value is double) {
+      return value;
+    } else if (value is bool) {
+      return value;
+    } else if (value == null) {
       return null;
     }
     return value.toString();

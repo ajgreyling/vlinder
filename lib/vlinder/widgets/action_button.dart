@@ -63,8 +63,13 @@ class VlinderActionButton extends StatelessWidget {
     final formState = FormStateProvider.of(context);
     
     // Create action handler
+    final hetuInstance = interpreter ?? (() {
+      final h = Hetu();
+      h.init();
+      return h;
+    })();
     final handler = ActionHandler(
-      interpreter: interpreter ?? Hetu(),
+      interpreter: hetuInstance,
       context: context,
       formState: formState,
     );
@@ -86,6 +91,7 @@ class VlinderActionButton extends StatelessWidget {
     // Try to get interpreter from context (would need a provider)
     // For now, create a new one - in full implementation, use InheritedWidget
     final interpreter = Hetu();
+    interpreter.init();
 
     return VlinderActionButton(
       label: label,
