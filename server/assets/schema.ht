@@ -1,6 +1,9 @@
 // Sample Schema Definition - Customer Entity
 // Demonstrates field types, constraints, and validation
 
+// Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
+logInfo("Starting schema definition")
+
 final customerSchema = {
   name: 'Customer',
   primaryKey: 'id',
@@ -46,7 +49,10 @@ final customerSchema = {
   },
 };
 
+log("Customer schema defined successfully")
+
 // Product schema example
+logInfo("Defining Product schema")
 final productSchema = {
   name: 'Product',
   primaryKey: 'id',
@@ -75,4 +81,7 @@ final productSchema = {
     },
   },
 };
+
+log("Product schema defined successfully")
+logInfo("Schema definitions complete")
 

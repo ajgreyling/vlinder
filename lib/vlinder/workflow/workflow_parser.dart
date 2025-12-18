@@ -1,5 +1,6 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
+import 'package:flutter/foundation.dart';
 
 /// Workflow step definition
 class WorkflowStep {
@@ -88,9 +89,32 @@ class WorkflowParser {
 
   /// Load workflows from workflows.ht file content
   Map<String, Workflow> loadWorkflows(String scriptContent) {
+    final scriptPreview = scriptContent.length > 300 
+        ? scriptContent.substring(0, 300) 
+        : scriptContent;
+    
     try {
+      debugPrint('[WorkflowParser] Evaluating workflow script (${scriptContent.length} characters)');
+      debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
+      
       // Workflow constructors are already defined in constructor, just evaluate user script
-      interpreter.eval(scriptContent);
+      try {
+        interpreter.eval(scriptContent);
+        debugPrint('[WorkflowParser] Workflow script evaluated successfully');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to evaluate workflow script: $e';
+        debugPrint('[WorkflowParser] ERROR: $errorMsg');
+        debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
+        debugPrint('[WorkflowParser] Stack trace: $stackTrace');
+        
+        // Try to extract line number from Hetu error if available
+        String enhancedError = errorMsg;
+        if (e.toString().contains('line') || e.toString().contains('Line')) {
+          enhancedError = '$errorMsg (check line numbers in error message)';
+        }
+        
+        throw FormatException('[WorkflowParser] $enhancedError');
+      }
 
       final workflows = <String, Workflow>{};
 
@@ -98,6 +122,7 @@ class WorkflowParser {
       try {
         final workflowsValue = interpreter.fetch('workflows');
         if (workflowsValue is HTStruct) {
+          debugPrint('[WorkflowParser] Found workflows map with ${workflowsValue.keys.length} entries');
           for (final key in workflowsValue.keys) {
             final value = workflowsValue[key];
             if (value is HTStruct) {
@@ -108,14 +133,23 @@ class WorkflowParser {
             }
           }
         }
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[WorkflowParser] Could not fetch "workflows" map, trying individual variables: $e');
         // Try individual workflow variables
         _extractWorkflowsFromVariables(workflows);
       }
 
+      debugPrint('[WorkflowParser] Successfully loaded ${workflows.length} workflows');
       return workflows;
-    } catch (e) {
-      throw FormatException('Failed to load workflows: $e');
+    } catch (e, stackTrace) {
+      if (e is FormatException && e.message.contains('[WorkflowParser]')) {
+        rethrow;
+      }
+      final errorMsg = 'Failed to load workflows: $e';
+      debugPrint('[WorkflowParser] ERROR: $errorMsg');
+      debugPrint('[WorkflowParser] Script preview: $scriptPreview...');
+      debugPrint('[WorkflowParser] Stack trace: $stackTrace');
+      throw FormatException('[WorkflowParser] $errorMsg');
     }
   }
 

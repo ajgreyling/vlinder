@@ -7,6 +7,7 @@
 library vlinder;
 
 export 'core/widget_registry.dart';
+export 'core/interpreter_provider.dart';
 export 'parser/ui_parser.dart';
 export 'binding/drift_binding.dart';
 export 'runtime/vlinder_runtime.dart';

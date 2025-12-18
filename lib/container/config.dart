@@ -25,5 +25,15 @@ class ContainerConfig {
 
   /// Cache directory name
   static const String cacheDirName = 'vlinder_cache';
+
+  /// Debug log server URL
+  /// Set via VLINDER_LOG_SERVER_URL environment variable at build time
+  static String? get debugLogServerUrl {
+    const envUrl = String.fromEnvironment('VLINDER_LOG_SERVER_URL');
+    if (envUrl.isNotEmpty) {
+      return envUrl;
+    }
+    return null; // Logging disabled by default
+  }
 }
 

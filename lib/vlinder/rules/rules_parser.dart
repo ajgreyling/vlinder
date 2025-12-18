@@ -1,5 +1,6 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
+import 'package:flutter/foundation.dart';
 
 /// Rule definition
 class Rule {
@@ -60,9 +61,32 @@ class RulesParser {
 
   /// Load rules from rules.ht file content
   Map<String, Rule> loadRules(String scriptContent) {
+    final scriptPreview = scriptContent.length > 300 
+        ? scriptContent.substring(0, 300) 
+        : scriptContent;
+    
     try {
+      debugPrint('[RulesParser] Evaluating rules script (${scriptContent.length} characters)');
+      debugPrint('[RulesParser] Script preview: $scriptPreview...');
+      
       // Rule constructors are already defined in constructor, just evaluate user script
-      interpreter.eval(scriptContent);
+      try {
+        interpreter.eval(scriptContent);
+        debugPrint('[RulesParser] Rules script evaluated successfully');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to evaluate rules script: $e';
+        debugPrint('[RulesParser] ERROR: $errorMsg');
+        debugPrint('[RulesParser] Script preview: $scriptPreview...');
+        debugPrint('[RulesParser] Stack trace: $stackTrace');
+        
+        // Try to extract line number from Hetu error if available
+        String enhancedError = errorMsg;
+        if (e.toString().contains('line') || e.toString().contains('Line')) {
+          enhancedError = '$errorMsg (check line numbers in error message)';
+        }
+        
+        throw FormatException('[RulesParser] $enhancedError');
+      }
 
       final rules = <String, Rule>{};
 
@@ -70,6 +94,7 @@ class RulesParser {
       try {
         final rulesValue = interpreter.fetch('rules');
         if (rulesValue is HTStruct) {
+          debugPrint('[RulesParser] Found rules map with ${rulesValue.keys.length} entries');
           for (final key in rulesValue.keys) {
             final value = rulesValue[key];
             if (value is HTStruct) {
@@ -80,14 +105,23 @@ class RulesParser {
             }
           }
         }
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[RulesParser] Could not fetch "rules" map, trying individual variables: $e');
         // Try individual rule variables
         _extractRulesFromVariables(rules);
       }
 
+      debugPrint('[RulesParser] Successfully loaded ${rules.length} rules');
       return rules;
-    } catch (e) {
-      throw FormatException('Failed to load rules: $e');
+    } catch (e, stackTrace) {
+      if (e is FormatException && e.message.contains('[RulesParser]')) {
+        rethrow;
+      }
+      final errorMsg = 'Failed to load rules: $e';
+      debugPrint('[RulesParser] ERROR: $errorMsg');
+      debugPrint('[RulesParser] Script preview: $scriptPreview...');
+      debugPrint('[RulesParser] Stack trace: $stackTrace');
+      throw FormatException('[RulesParser] $errorMsg');
     }
   }
 

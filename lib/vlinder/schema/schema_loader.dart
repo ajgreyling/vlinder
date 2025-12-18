@@ -57,9 +57,32 @@ class SchemaLoader {
   /// Load schemas from schema.ht file content
   /// Returns a map of entity names to EntitySchema objects
   Map<String, EntitySchema> loadSchemas(String scriptContent) {
+    final scriptPreview = scriptContent.length > 300 
+        ? scriptContent.substring(0, 300) 
+        : scriptContent;
+    
     try {
+      debugPrint('[SchemaLoader] Evaluating schema script (${scriptContent.length} characters)');
+      debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
+      
       // Schema constructors are already defined in constructor, just evaluate user script
-      interpreter.eval(scriptContent);
+      try {
+        interpreter.eval(scriptContent);
+        debugPrint('[SchemaLoader] Schema script evaluated successfully');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to evaluate schema script: $e';
+        debugPrint('[SchemaLoader] ERROR: $errorMsg');
+        debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
+        debugPrint('[SchemaLoader] Stack trace: $stackTrace');
+        
+        // Try to extract line number from Hetu error if available
+        String enhancedError = errorMsg;
+        if (e.toString().contains('line') || e.toString().contains('Line')) {
+          enhancedError = '$errorMsg (check line numbers in error message)';
+        }
+        
+        throw FormatException('[SchemaLoader] $enhancedError');
+      }
 
       // Extract schema definitions
       final schemas = <String, EntitySchema>{};
@@ -69,6 +92,7 @@ class SchemaLoader {
       try {
         final schemasValue = interpreter.fetch('schemas');
         if (schemasValue is HTStruct) {
+          debugPrint('[SchemaLoader] Found schemas map with ${schemasValue.keys.length} entries');
           for (final key in schemasValue.keys) {
             final value = schemasValue[key];
             if (value is HTStruct) {
@@ -79,14 +103,23 @@ class SchemaLoader {
             }
           }
         }
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[SchemaLoader] Could not fetch "schemas" map, trying individual variables: $e');
         // Try individual schema variables
         _extractSchemasFromVariables(schemas);
       }
 
+      debugPrint('[SchemaLoader] Successfully loaded ${schemas.length} schemas');
       return schemas;
-    } catch (e) {
-      throw FormatException('Failed to load schemas: $e');
+    } catch (e, stackTrace) {
+      if (e is FormatException && e.message.contains('[SchemaLoader]')) {
+        rethrow;
+      }
+      final errorMsg = 'Failed to load schemas: $e';
+      debugPrint('[SchemaLoader] ERROR: $errorMsg');
+      debugPrint('[SchemaLoader] Script preview: $scriptPreview...');
+      debugPrint('[SchemaLoader] Stack trace: $stackTrace');
+      throw FormatException('[SchemaLoader] $errorMsg');
     }
   }
 

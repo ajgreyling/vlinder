@@ -1,6 +1,9 @@
 // Sample Rules Definition - Business Rules and Validation
 // Demonstrates conditional logic and rule-based behavior
 
+// Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
+logInfo("Loading validation rules")
+
 final validationRules = {
   email_required: {
     ruleType: 'Rule',
@@ -25,6 +28,8 @@ final validationRules = {
   },
 };
 
+log("Validation rules loaded: ${validationRules.keys.length} rules")
+
 final businessRules = {
   auto_complete_phone: {
     ruleType: 'Rule',
@@ -41,4 +46,7 @@ final businessRules = {
     action: 'applyDiscount(0.1)',
   },
 };
+
+log("Business rules loaded: ${businessRules.keys.length} rules")
+logInfo("Rules definitions complete")
 

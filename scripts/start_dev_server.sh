@@ -33,7 +33,7 @@ fi
 # Cleanup existing processes
 echo -e "${YELLOW}Checking for existing processes...${NC}"
 
-# Kill existing Python server if running
+# Kill existing Python servers if running
 if [ -f /tmp/vlinder_server.pid ]; then
     OLD_SERVER_PID=$(cat /tmp/vlinder_server.pid 2>/dev/null)
     if [ -n "$OLD_SERVER_PID" ] && kill -0 $OLD_SERVER_PID 2>/dev/null; then
@@ -43,11 +43,45 @@ if [ -f /tmp/vlinder_server.pid ]; then
     fi
 fi
 
+if [ -f /tmp/vlinder_asset_server.pid ]; then
+    OLD_ASSET_SERVER_PID=$(cat /tmp/vlinder_asset_server.pid 2>/dev/null)
+    if [ -n "$OLD_ASSET_SERVER_PID" ] && kill -0 $OLD_ASSET_SERVER_PID 2>/dev/null; then
+        echo -e "${YELLOW}Stopping existing asset server (PID: $OLD_ASSET_SERVER_PID)${NC}"
+        kill $OLD_ASSET_SERVER_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+if [ -f /tmp/vlinder_proxy.pid ]; then
+    OLD_PROXY_PID=$(cat /tmp/vlinder_proxy.pid 2>/dev/null)
+    if [ -n "$OLD_PROXY_PID" ] && kill -0 $OLD_PROXY_PID 2>/dev/null; then
+        echo -e "${YELLOW}Stopping existing reverse proxy (PID: $OLD_PROXY_PID)${NC}"
+        kill $OLD_PROXY_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
 # Kill any Python serve_assets.py processes
 EXISTING_PYTHON=$(ps aux | grep "serve_assets.py" | grep -v grep | awk '{print $2}')
 if [ -n "$EXISTING_PYTHON" ]; then
-    echo -e "${YELLOW}Stopping existing Python server processes${NC}"
+    echo -e "${YELLOW}Stopping existing asset server processes${NC}"
     echo "$EXISTING_PYTHON" | xargs kill 2>/dev/null || true
+    sleep 1
+fi
+
+# Kill any Python reverse_proxy.py processes
+EXISTING_PROXY=$(ps aux | grep "reverse_proxy.py" | grep -v grep | awk '{print $2}')
+if [ -n "$EXISTING_PROXY" ]; then
+    echo -e "${YELLOW}Stopping existing reverse proxy processes${NC}"
+    echo "$EXISTING_PROXY" | xargs kill 2>/dev/null || true
+    sleep 1
+fi
+
+# Kill any Python log_server.py processes
+EXISTING_LOG_SERVER=$(ps aux | grep "log_server.py" | grep -v grep | awk '{print $2}')
+if [ -n "$EXISTING_LOG_SERVER" ]; then
+    echo -e "${YELLOW}Stopping existing log server processes${NC}"
+    echo "$EXISTING_LOG_SERVER" | xargs kill 2>/dev/null || true
     sleep 1
 fi
 
@@ -69,11 +103,29 @@ if [ -n "$EXISTING_NGROK" ]; then
     sleep 1
 fi
 
+# Kill any ngrok processes pointing to port 8001 (log server)
+EXISTING_LOG_NGROK=$(ps aux | grep "ngrok http 8001" | grep -v grep | awk '{print $2}')
+if [ -n "$EXISTING_LOG_NGROK" ]; then
+    echo -e "${YELLOW}Stopping existing ngrok processes for port 8001${NC}"
+    echo "$EXISTING_LOG_NGROK" | xargs kill 2>/dev/null || true
+    sleep 1
+fi
+
 # Check if port 8000 is still in use
 if lsof -i :8000 >/dev/null 2>&1; then
     PORT_PID=$(lsof -ti :8000)
     if [ -n "$PORT_PID" ]; then
         echo -e "${YELLOW}Port 8000 is still in use (PID: $PORT_PID), killing...${NC}"
+        kill $PORT_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Check if port 8001 (log server) is still in use
+if lsof -i :8001 >/dev/null 2>&1; then
+    PORT_PID=$(lsof -ti :8001)
+    if [ -n "$PORT_PID" ]; then
+        echo -e "${YELLOW}Port 8001 is still in use (PID: $PORT_PID), killing...${NC}"
         kill $PORT_PID 2>/dev/null || true
         sleep 1
     fi
@@ -93,7 +145,7 @@ if lsof -i :4040 >/dev/null 2>&1; then
 fi
 
 # Clean up old PID files
-rm -f /tmp/vlinder_server.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_flutter.pid
+rm -f /tmp/vlinder_server.pid /tmp/vlinder_asset_server.pid /tmp/vlinder_log_server.pid /tmp/vlinder_proxy.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_log_ngrok.pid /tmp/vlinder_flutter.pid
 
 echo -e "${GREEN}Cleanup complete. Starting fresh...${NC}"
 echo ""
@@ -119,25 +171,61 @@ else
 fi
 echo ""
 
-# Start Python server in background
-echo -e "${GREEN}Starting Python HTTP server...${NC}"
+# Start Python asset server in background (internal port 8002)
+echo -e "${GREEN}Starting Python asset server (internal port 8002)...${NC}"
 cd "$SERVER_DIR"
 python3 serve_assets.py &
-SERVER_PID=$!
+ASSET_SERVER_PID=$!
 
-# Wait for server to start
+# Wait for asset server to start
 sleep 2
 
-# Check if server is running
-if ! kill -0 $SERVER_PID 2>/dev/null; then
-    echo -e "${RED}Error: Server failed to start${NC}"
+# Check if asset server is running
+if ! kill -0 $ASSET_SERVER_PID 2>/dev/null; then
+    echo -e "${RED}Error: Asset server failed to start${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Server started (PID: $SERVER_PID)${NC}"
+echo -e "${GREEN}Asset server started (PID: $ASSET_SERVER_PID)${NC}"
 
-# Start ngrok tunnel
-echo -e "${GREEN}Starting ngrok tunnel...${NC}"
+# Start Python log server in background (internal port 8001)
+echo -e "${GREEN}Starting Python log server (internal port 8001)...${NC}"
+cd "$SERVER_DIR"
+python3 log_server.py &
+LOG_SERVER_PID=$!
+
+# Wait for log server to start
+sleep 2
+
+# Check if log server is running
+if ! kill -0 $LOG_SERVER_PID 2>/dev/null; then
+    echo -e "${YELLOW}Warning: Log server failed to start (continuing anyway)${NC}"
+    LOG_SERVER_PID=""
+else
+    echo -e "${GREEN}Log server started (PID: $LOG_SERVER_PID)${NC}"
+fi
+
+# Start reverse proxy router (public-facing port 8000)
+echo -e "${GREEN}Starting reverse proxy router (port 8000)...${NC}"
+cd "$SERVER_DIR"
+python3 reverse_proxy.py &
+PROXY_PID=$!
+
+# Wait for reverse proxy to start
+sleep 2
+
+# Check if reverse proxy is running
+if ! kill -0 $PROXY_PID 2>/dev/null; then
+    echo -e "${RED}Error: Reverse proxy failed to start${NC}"
+    kill $ASSET_SERVER_PID 2>/dev/null || true
+    [ -n "$LOG_SERVER_PID" ] && kill $LOG_SERVER_PID 2>/dev/null || true
+    exit 1
+fi
+
+echo -e "${GREEN}Reverse proxy started (PID: $PROXY_PID)${NC}"
+
+# Start ngrok tunnel for reverse proxy (port 8000)
+echo -e "${GREEN}Starting ngrok tunnel for reverse proxy...${NC}"
 ngrok http 8000 --log=stdout > /tmp/ngrok.log 2>&1 &
 NGROK_PID=$!
 
@@ -158,24 +246,34 @@ done
 if [ -z "$NGROK_URL" ]; then
     echo -e "${RED}Error: Could not get ngrok URL${NC}"
     echo "Check ngrok status: http://localhost:4040"
-    kill $SERVER_PID 2>/dev/null || true
+    kill $ASSET_SERVER_PID 2>/dev/null || true
+    [ -n "$LOG_SERVER_PID" ] && kill $LOG_SERVER_PID 2>/dev/null || true
+    kill $PROXY_PID 2>/dev/null || true
     kill $NGROK_PID 2>/dev/null || true
     exit 1
 fi
 
 echo -e "${GREEN}Ngrok tunnel started${NC}"
-echo -e "${GREEN}Public URL: $NGROK_URL${NC}"
+echo -e "${GREEN}Public URL (both services): $NGROK_URL${NC}"
+echo -e "${GREEN}  - Assets: $NGROK_URL/*.ht${NC}"
+echo -e "${GREEN}  - Logs: $NGROK_URL/logs${NC}"
 echo ""
-echo "Server PID: $SERVER_PID"
-echo "Ngrok PID: $NGROK_PID"
+echo "Service PIDs:"
+echo "  Asset Server (port 8002): $ASSET_SERVER_PID"
+[ -n "$LOG_SERVER_PID" ] && echo "  Log Server (port 8001): $LOG_SERVER_PID"
+echo "  Reverse Proxy (port 8000): $PROXY_PID"
+echo "  Ngrok: $NGROK_PID"
 echo ""
-echo "To stop, run: kill $SERVER_PID $NGROK_PID"
+echo "To stop, run: kill $ASSET_SERVER_PID $PROXY_PID $NGROK_PID"
+[ -n "$LOG_SERVER_PID" ] && echo "  kill $LOG_SERVER_PID"
 echo ""
-echo "Exporting NGROK_URL for build script..."
+echo "Exporting URLs for build script..."
 export NGROK_URL
 
 # Save PID and URL to file for cleanup
-echo "$SERVER_PID" > /tmp/vlinder_server.pid
+echo "$ASSET_SERVER_PID" > /tmp/vlinder_asset_server.pid
+[ -n "$LOG_SERVER_PID" ] && echo "$LOG_SERVER_PID" > /tmp/vlinder_log_server.pid
+echo "$PROXY_PID" > /tmp/vlinder_proxy.pid
 echo "$NGROK_PID" > /tmp/vlinder_ngrok.pid
 echo "$NGROK_URL" > /tmp/vlinder_ngrok_url.txt
 
@@ -186,7 +284,48 @@ echo -e "${GREEN}Ready! Run build script with: ./scripts/build_container.sh${NC}
 set +e
 if command -v flutter &> /dev/null; then
     echo ""
-    echo -e "${GREEN}Flutter detected. Would you like to deploy to a device?${NC}"
+    echo -e "${GREEN}Flutter detected.${NC}"
+    
+    # Pre-compilation check BEFORE device selection (much faster than flutter run)
+    echo -e "${GREEN}Running pre-compilation check...${NC}"
+    echo -e "${YELLOW}This will catch errors before the slow build process${NC}"
+    
+    cd "$PROJECT_ROOT"
+    # Run flutter analyze to catch compilation errors quickly
+    # Use --no-fatal-infos and --no-fatal-warnings to only fail on actual errors
+    ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1)
+    ANALYZE_EXIT_CODE=$?
+    
+    # Save full output for reference
+    echo "$ANALYZE_OUTPUT" > /tmp/flutter_analyze.log
+    
+    if [ $ANALYZE_EXIT_CODE -eq 0 ]; then
+        echo -e "${GREEN}✓ Pre-compilation check passed!${NC}"
+        echo ""
+    else
+        echo -e "${RED}✗ Pre-compilation check failed!${NC}"
+        echo ""
+        echo -e "${RED}Errors found:${NC}"
+        # Extract and display errors (more readable format)
+        echo "$ANALYZE_OUTPUT" | grep -E "error •|Error:|ERROR" | head -n 30
+        echo ""
+        echo -e "${YELLOW}Full analysis output saved to: /tmp/flutter_analyze.log${NC}"
+        echo -e "${YELLOW}View full output: cat /tmp/flutter_analyze.log${NC}"
+        echo ""
+        echo -e "${RED}Fix the errors above before continuing, or continue anyway (not recommended).${NC}"
+        read -p "Continue anyway? (y/n): " CONTINUE_CHOICE
+        if [ "$CONTINUE_CHOICE" != "y" ] && [ "$CONTINUE_CHOICE" != "Y" ]; then
+            echo -e "${YELLOW}Skipping Flutter deployment due to compilation errors${NC}"
+            echo -e "${YELLOW}Fix errors and run the script again${NC}"
+            # Re-enable exit on error and exit
+            set -e
+            exit 0
+        fi
+        echo -e "${YELLOW}Continuing despite errors...${NC}"
+        echo ""
+    fi
+    
+    echo -e "${GREEN}Would you like to deploy to a device?${NC}"
     read -p "Deploy to device? (y/n): " DEPLOY_CHOICE
     
     if [ "$DEPLOY_CHOICE" = "y" ] || [ "$DEPLOY_CHOICE" = "Y" ]; then
@@ -241,10 +380,32 @@ if command -v flutter &> /dev/null; then
                 echo -e "${GREEN}Building and deploying with server URL: $NGROK_URL${NC}"
                 echo ""
                 
+                # Open log viewer window BEFORE running flutter
+                echo -e "${GREEN}Opening debug log viewer window...${NC}"
+                if command -v osascript &> /dev/null; then
+                    # macOS - open new Terminal window
+                    osascript <<EOF
+tell application "Terminal"
+    do script "cd '$PROJECT_ROOT' && '$PROJECT_ROOT/scripts/view_logs.sh'"
+    activate
+end tell
+EOF
+                    echo -e "${GREEN}Log viewer window opened${NC}"
+                    sleep 2  # Give the terminal window time to open
+                else
+                    echo -e "${YELLOW}Note: osascript not available. Run '$PROJECT_ROOT/scripts/view_logs.sh' manually to view logs${NC}"
+                fi
+                
                 # Build and run Flutter app with server URL
                 cd "$PROJECT_ROOT"
-                echo -e "${GREEN}Running: flutter run -d \"$SELECTED_DEVICE\" --dart-define=VLINDER_SERVER_URL=\"$NGROK_URL\"${NC}"
-                flutter run -d "$SELECTED_DEVICE" --dart-define=VLINDER_SERVER_URL="$NGROK_URL" &
+                
+                # Build command with asset server URL and log server URL
+                # Both services are now accessible through the same ngrok URL
+                FLUTTER_CMD="flutter run -d \"$SELECTED_DEVICE\" --dart-define=VLINDER_SERVER_URL=\"$NGROK_URL\" --dart-define=VLINDER_LOG_SERVER_URL=\"$NGROK_URL\""
+                echo -e "${GREEN}Running: $FLUTTER_CMD${NC}"
+                echo -e "${GREEN}Debug logs are visible in the log viewer window${NC}"
+                echo -e "${GREEN}Both services accessible via: $NGROK_URL${NC}"
+                eval "$FLUTTER_CMD" &
                 FLUTTER_PID=$!
                 echo "$FLUTTER_PID" > /tmp/vlinder_flutter.pid
                 echo -e "${GREEN}Flutter app deploying (PID: $FLUTTER_PID)${NC}"
@@ -266,9 +427,17 @@ set -e
 cleanup() {
     echo ""
     echo -e "${YELLOW}Shutting down...${NC}"
-    if [ -n "$SERVER_PID" ] && kill -0 $SERVER_PID 2>/dev/null; then
-        kill $SERVER_PID 2>/dev/null || true
-        echo "Stopped Python server"
+    if [ -n "$ASSET_SERVER_PID" ] && kill -0 $ASSET_SERVER_PID 2>/dev/null; then
+        kill $ASSET_SERVER_PID 2>/dev/null || true
+        echo "Stopped asset server"
+    fi
+    if [ -n "$LOG_SERVER_PID" ] && kill -0 $LOG_SERVER_PID 2>/dev/null; then
+        kill $LOG_SERVER_PID 2>/dev/null || true
+        echo "Stopped log server"
+    fi
+    if [ -n "$PROXY_PID" ] && kill -0 $PROXY_PID 2>/dev/null; then
+        kill $PROXY_PID 2>/dev/null || true
+        echo "Stopped reverse proxy"
     fi
     if [ -n "$NGROK_PID" ] && kill -0 $NGROK_PID 2>/dev/null; then
         kill $NGROK_PID 2>/dev/null || true
@@ -281,7 +450,7 @@ cleanup() {
             echo "Stopped Flutter app"
         fi
     fi
-    rm -f /tmp/vlinder_server.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_ngrok_url.txt /tmp/vlinder_flutter.pid
+    rm -f /tmp/vlinder_asset_server.pid /tmp/vlinder_log_server.pid /tmp/vlinder_proxy.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_ngrok_url.txt /tmp/vlinder_flutter.pid
     exit 0
 }
 
@@ -292,15 +461,25 @@ trap cleanup SIGINT SIGTERM
 echo ""
 echo -e "${GREEN}Server running. Press Ctrl+C to stop.${NC}"
 while true; do
-    # Check if server is still running
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
-        echo -e "${RED}Python server stopped unexpectedly${NC}"
+    # Check if reverse proxy is still running
+    if ! kill -0 $PROXY_PID 2>/dev/null; then
+        echo -e "${RED}Reverse proxy stopped unexpectedly${NC}"
         cleanup
+    fi
+    # Check if asset server is still running
+    if ! kill -0 $ASSET_SERVER_PID 2>/dev/null; then
+        echo -e "${RED}Asset server stopped unexpectedly${NC}"
+        cleanup
+    fi
+    # Check if log server is still running
+    if [ -n "$LOG_SERVER_PID" ] && ! kill -0 $LOG_SERVER_PID 2>/dev/null; then
+        echo -e "${YELLOW}Log server stopped${NC}"
+        # Don't exit, reverse proxy can still work without log server
     fi
     # Check if ngrok is still running
     if [ -n "$NGROK_PID" ] && ! kill -0 $NGROK_PID 2>/dev/null; then
         echo -e "${YELLOW}Ngrok stopped${NC}"
-        # Don't exit, server can still work without ngrok
+        # Don't exit, server can still work without ngrok (localhost access)
     fi
     sleep 5
 done

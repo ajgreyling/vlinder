@@ -1,10 +1,19 @@
 // Sample UI definition - Customer Registration Form
 // Demonstrates form with validation, fields, and actions
 
+// Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
+logInfo("Building customer registration form UI")
+
 final screen = Screen(
   id: 'customer_registration',
   title: 'Customer Registration',
   children: [
+    Text(
+      text: 'Customer Registration Sample App',
+      style: 'headline',
+      align: 'center',
+      padding: 24.0,
+    ),
     Form(
       entity: 'Customer',
       fields: [
@@ -45,4 +54,7 @@ final screen = Screen(
     ),
   ],
 );
+
+log("Customer registration screen built successfully")
+logInfo("UI definition complete")
 

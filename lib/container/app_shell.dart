@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
 import '../vlinder/vlinder.dart';
+import '../vlinder/core/interpreter_provider.dart';
 import 'asset_fetcher.dart';
+import 'debug_logger.dart';
+import 'config.dart';
 
 /// Loading state for initialization steps
 enum LoadingStep {
@@ -23,8 +26,8 @@ class ContainerAppShell extends StatefulWidget {
 }
 
 class _ContainerAppShellState extends State<ContainerAppShell> {
-  final VlinderRuntime _runtime = VlinderRuntime();
   late final Hetu _interpreter;
+  late final VlinderRuntime _runtime;
   final AssetFetcher _fetcher = AssetFetcher();
   
   Widget? _loadedUI;
@@ -36,9 +39,146 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   @override
   void initState() {
     super.initState();
+    // Create interpreter first
     _interpreter = Hetu();
     _interpreter.init();
+    
+    // Register logging functions in the interpreter
+    // This allows .ht files to use log(), logInfo(), logWarning(), logError()
+    _registerLoggingFunctions();
+    
+    // Create runtime with shared interpreter
+    // This ensures UI scripts can access schemas, workflows, and rules
+    _runtime = VlinderRuntime(interpreter: _interpreter);
+    
+    // Enable remote debug logging if configured
+    // Pass log server URL explicitly from config
+    final logServerUrl = ContainerConfig.debugLogServerUrl;
+    if (logServerUrl != null && logServerUrl.isNotEmpty) {
+      debugPrint('[ContainerAppShell] Enabling debug logging to: $logServerUrl');
+      DebugLogger.instance.enable(logServerUrl: logServerUrl);
+    } else {
+      debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
+    }
+    
     _initializeApp();
+  }
+
+  /// Register logging functions in Hetu interpreter
+  /// These functions allow .ht files to log messages that are sent to the debug logger
+  void _registerLoggingFunctions() {
+    debugPrint('[ContainerAppShell] Registering logging functions in Hetu interpreter...');
+    
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      _interpreter.fetch('log');
+      debugPrint('[ContainerAppShell] Logging functions already defined, skipping registration');
+      return;
+    } catch (_) {
+      // Functions don't exist, proceed with definition
+    }
+
+    final loggingScript = '''
+      // Logging functions for Hetu scripts
+      // These functions store logs in a global _hetuLogs array
+      // The logs are processed after script evaluation
+      
+      var _hetuLogs = []
+      
+      fun log(message) {
+        // DEBUG level logging
+        final logEntry = {
+          level: "DEBUG",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logInfo(message) {
+        // INFO level logging
+        final logEntry = {
+          level: "INFO",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logWarning(message) {
+        // WARNING level logging
+        final logEntry = {
+          level: "WARNING",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logError(message) {
+        // ERROR level logging
+        final logEntry = {
+          level: "ERROR",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+    ''';
+
+    try {
+      _interpreter.eval(loggingScript);
+      debugPrint('[ContainerAppShell] Logging functions registered successfully');
+    } catch (e) {
+      debugPrint('[ContainerAppShell] Warning: Could not register logging functions: $e');
+    }
+  }
+
+  /// Process logs from Hetu scripts after evaluation
+  /// Extracts logs from _hetuLogs array and sends them to debug logger
+  void _processHetuLogs() {
+    try {
+      final logsValue = _interpreter.fetch('_hetuLogs');
+      if (logsValue is List && logsValue.isNotEmpty) {
+        debugPrint('[ContainerAppShell] Processing ${logsValue.length} Hetu log entries');
+        for (final logEntry in logsValue) {
+          if (logEntry is Map) {
+            final level = logEntry['level']?.toString() ?? 'DEBUG';
+            final message = logEntry['message']?.toString() ?? '';
+            _logFromHetu(level, message);
+          }
+        }
+        // Clear the logs array
+        _interpreter.eval('_hetuLogs = []');
+      }
+    } catch (e) {
+      // Ignore errors - logging is not critical
+      debugPrint('[ContainerAppShell] Warning: Could not process Hetu logs: $e');
+    }
+  }
+
+  /// Helper method to log from Hetu scripts
+  /// Called when processing Hetu logs after script evaluation
+  void _logFromHetu(String level, String message) {
+    // Use debugPrint which is intercepted by DebugLogger
+    // Component will be extracted as "HetuScript"
+    final component = 'HetuScript';
+    final logMessage = level == 'DEBUG' 
+        ? '[$component] $message'
+        : level == 'INFO'
+            ? '[$component] INFO: $message'
+            : level == 'WARNING'
+                ? '[$component] WARNING: $message'
+                : '[$component] ERROR: $message';
+    
+    debugPrint(logMessage);
+  }
+  
+  @override
+  void dispose() {
+    // Flush remaining logs before disposing
+    DebugLogger.instance.flush();
+    super.dispose();
   }
 
   Future<void> _initializeApp() async {
@@ -63,88 +203,204 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       setState(() {
         _currentStep = LoadingStep.fetchingAssets;
       });
-      final assets = await _fetcher.fetchAllAssets();
-      debugPrint('[ContainerAppShell] Fetched ${assets.length} assets: ${assets.keys.join(", ")}');
+      Map<String, String> assets;
+      try {
+        assets = await _fetcher.fetchAllAssets();
+        debugPrint('[ContainerAppShell] Fetched ${assets.length} assets: ${assets.keys.join(", ")}');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to fetch assets: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        throw Exception('Step: Fetching assets - $errorMsg');
+      }
 
       // Load schemas
       debugPrint('[ContainerAppShell] Loading schemas');
       setState(() {
         _currentStep = LoadingStep.loadingSchemas;
       });
-      final schemaLoader = SchemaLoader(interpreter: _interpreter);
-      final schemas = schemaLoader.loadSchemas(assets['schema.ht'] ?? '');
-      debugPrint('[ContainerAppShell] Loaded ${schemas.length} schemas: ${schemas.keys.join(", ")}');
+      Map<String, EntitySchema> schemas;
+      try {
+        final schemaContent = assets['schema.ht'] ?? '';
+        final schemaPreview = schemaContent.length > 200 
+            ? schemaContent.substring(0, 200) 
+            : schemaContent;
+        debugPrint('[ContainerAppShell] Schema content length: ${schemaContent.length} characters');
+        debugPrint('[ContainerAppShell] Schema preview: $schemaPreview...');
+        
+        final schemaLoader = SchemaLoader(interpreter: _interpreter);
+        schemas = schemaLoader.loadSchemas(schemaContent);
+        
+        // Process any logs from Hetu script execution
+        _processHetuLogs();
+        
+        debugPrint('[ContainerAppShell] Loaded ${schemas.length} schemas: ${schemas.keys.join(", ")}');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to load schemas from schema.ht: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        final schemaContent = assets['schema.ht'] ?? '';
+        if (schemaContent.isNotEmpty) {
+          final preview = schemaContent.length > 200 
+              ? schemaContent.substring(0, 200) 
+              : schemaContent;
+          debugPrint('[ContainerAppShell] Schema content preview: $preview...');
+        }
+        throw Exception('Step: Loading schemas - File: schema.ht - $errorMsg');
+      }
 
       // Initialize database with schemas
       debugPrint('[ContainerAppShell] Initializing database');
       setState(() {
         _currentStep = LoadingStep.initializingDatabase;
       });
-      final database = VlinderDatabase();
-      for (final schema in schemas.values) {
-        debugPrint('[ContainerAppShell] Creating table for schema: ${schema.name}');
-        await database.createTableFromSchema(schema);
+      try {
+        final database = VlinderDatabase();
+        for (final schema in schemas.values) {
+          debugPrint('[ContainerAppShell] Creating table for schema: ${schema.name}');
+          try {
+            await database.createTableFromSchema(schema);
+          } catch (e, stackTrace) {
+            final errorMsg = 'Failed to create table for schema "${schema.name}": $e';
+            debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+            debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+            throw Exception('Step: Initializing database - Schema: ${schema.name} - $errorMsg');
+          }
+        }
+        debugPrint('[ContainerAppShell] Database initialization complete');
+      } catch (e) {
+        // Re-throw if it's our own exception, otherwise wrap it
+        if (e.toString().contains('Step: Initializing database')) {
+          rethrow;
+        }
+        final errorMsg = 'Failed to initialize database: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        throw Exception('Step: Initializing database - $errorMsg');
       }
-      debugPrint('[ContainerAppShell] Database initialization complete');
 
       // Load workflows
       debugPrint('[ContainerAppShell] Loading workflows');
       setState(() {
         _currentStep = LoadingStep.loadingWorkflows;
       });
-      final workflowParser = WorkflowParser(interpreter: _interpreter);
-      workflowParser.loadWorkflows(assets['workflows.ht'] ?? '');
-      debugPrint('[ContainerAppShell] Workflows loaded');
+      try {
+        final workflowContent = assets['workflows.ht'] ?? '';
+        final workflowPreview = workflowContent.length > 200 
+            ? workflowContent.substring(0, 200) 
+            : workflowContent;
+        debugPrint('[ContainerAppShell] Workflow content length: ${workflowContent.length} characters');
+        debugPrint('[ContainerAppShell] Workflow preview: $workflowPreview...');
+        
+        final workflowParser = WorkflowParser(interpreter: _interpreter);
+        workflowParser.loadWorkflows(workflowContent);
+        
+        // Process any logs from Hetu script execution
+        _processHetuLogs();
+        
+        debugPrint('[ContainerAppShell] Workflows loaded');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to load workflows from workflows.ht: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        final workflowContent = assets['workflows.ht'] ?? '';
+        if (workflowContent.isNotEmpty) {
+          final preview = workflowContent.length > 200 
+              ? workflowContent.substring(0, 200) 
+              : workflowContent;
+          debugPrint('[ContainerAppShell] Workflow content preview: $preview...');
+        }
+        throw Exception('Step: Loading workflows - File: workflows.ht - $errorMsg');
+      }
 
       // Load rules
       debugPrint('[ContainerAppShell] Loading rules');
       setState(() {
         _currentStep = LoadingStep.loadingRules;
       });
-      final rulesParser = RulesParser(interpreter: _interpreter);
-      rulesParser.loadRules(assets['rules.ht'] ?? '');
-      debugPrint('[ContainerAppShell] Rules loaded');
-
-      // Note: WorkflowEngine and RulesEngine are created but not yet integrated
-      // They will be used when action handlers are implemented
-      // final workflows = workflowParser.loadWorkflows(assets['workflows.ht'] ?? '');
-      // final rules = rulesParser.loadRules(assets['rules.ht'] ?? '');
-      // final workflowEngine = WorkflowEngine(interpreter: _interpreter, workflows: workflows);
-      // final rulesEngine = RulesEngine(interpreter: _interpreter, rules: rules);
+      try {
+        final rulesContent = assets['rules.ht'] ?? '';
+        final rulesPreview = rulesContent.length > 200 
+            ? rulesContent.substring(0, 200) 
+            : rulesContent;
+        debugPrint('[ContainerAppShell] Rules content length: ${rulesContent.length} characters');
+        debugPrint('[ContainerAppShell] Rules preview: $rulesPreview...');
+        
+        final rulesParser = RulesParser(interpreter: _interpreter);
+        rulesParser.loadRules(rulesContent);
+        
+        // Process any logs from Hetu script execution
+        _processHetuLogs();
+        
+        debugPrint('[ContainerAppShell] Rules loaded');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to load rules from rules.ht: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        final rulesContent = assets['rules.ht'] ?? '';
+        if (rulesContent.isNotEmpty) {
+          final preview = rulesContent.length > 200 
+              ? rulesContent.substring(0, 200) 
+              : rulesContent;
+          debugPrint('[ContainerAppShell] Rules content preview: $preview...');
+        }
+        throw Exception('Step: Loading rules - File: rules.ht - $errorMsg');
+      }
 
       // Load UI
       debugPrint('[ContainerAppShell] Loading UI');
       setState(() {
         _currentStep = LoadingStep.loadingUI;
       });
-      final uiContent = assets['ui.ht'] ?? '';
-      if (uiContent.isEmpty) {
-        debugPrint('[ContainerAppShell] ERROR: No UI content found in assets');
-        throw Exception('No UI content found');
-      }
-      debugPrint('[ContainerAppShell] UI content length: ${uiContent.length} characters');
-      debugPrint('[ContainerAppShell] UI content preview: ${uiContent.substring(0, uiContent.length > 300 ? 300 : uiContent.length)}...');
+      try {
+        final uiContent = assets['ui.ht'] ?? '';
+        if (uiContent.isEmpty) {
+          debugPrint('[ContainerAppShell] ERROR: No UI content found in assets');
+          throw Exception('Step: Loading UI - File: ui.ht - No UI content found');
+        }
+        debugPrint('[ContainerAppShell] UI content length: ${uiContent.length} characters');
+        final uiPreview = uiContent.length > 300 
+            ? uiContent.substring(0, 300) 
+            : uiContent;
+        debugPrint('[ContainerAppShell] UI content preview: $uiPreview...');
 
-      debugPrint('[ContainerAppShell] Calling _runtime.loadUI()...');
-      final loadedWidget = _runtime.loadUI(uiContent, context);
-      debugPrint('[ContainerAppShell] loadUI returned widget: ${loadedWidget.runtimeType}');
-      
-      if (loadedWidget == null) {
-        debugPrint('[ContainerAppShell] ERROR: loadUI returned null widget!');
-        throw Exception('loadUI returned null widget');
-      }
+        debugPrint('[ContainerAppShell] Calling _runtime.loadUI()...');
+        final loadedWidget = _runtime.loadUI(uiContent, context);
+        debugPrint('[ContainerAppShell] loadUI returned widget: ${loadedWidget.runtimeType}');
+        
+        if (loadedWidget == null) {
+          debugPrint('[ContainerAppShell] ERROR: loadUI returned null widget!');
+          throw Exception('Step: Loading UI - File: ui.ht - loadUI returned null widget');
+        }
 
-      setState(() {
-        _loadedUI = loadedWidget;
-        _currentStep = LoadingStep.complete;
-        _isLoading = false;
-      });
-      debugPrint('[ContainerAppShell] App initialization complete. _loadedUI type: ${_loadedUI.runtimeType}');
+        setState(() {
+          _loadedUI = loadedWidget;
+          _currentStep = LoadingStep.complete;
+          _isLoading = false;
+        });
+        debugPrint('[ContainerAppShell] App initialization complete. _loadedUI type: ${_loadedUI.runtimeType}');
+      } catch (e, stackTrace) {
+        // Re-throw if it's our own exception, otherwise wrap it
+        if (e.toString().contains('Step: Loading UI')) {
+          rethrow;
+        }
+        final errorMsg = 'Failed to load UI from ui.ht: $e';
+        debugPrint('[ContainerAppShell] ERROR: $errorMsg');
+        debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
+        final uiContent = assets['ui.ht'] ?? '';
+        if (uiContent.isNotEmpty) {
+          final preview = uiContent.length > 300 
+              ? uiContent.substring(0, 300) 
+              : uiContent;
+          debugPrint('[ContainerAppShell] UI content preview: $preview...');
+        }
+        throw Exception('Step: Loading UI - File: ui.ht - $errorMsg');
+      }
     } catch (e, stackTrace) {
-      debugPrint('[ContainerAppShell] Error during initialization: $e');
+      final errorMsg = e.toString();
+      debugPrint('[ContainerAppShell] ERROR: Error during initialization: $errorMsg');
       debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = errorMsg;
         _isLoading = false;
       });
     }
@@ -196,10 +452,13 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   Widget build(BuildContext context) {
     debugPrint('[ContainerAppShell] build() called: _isLoading=$_isLoading, _loadedUI=${_loadedUI != null ? _loadedUI.runtimeType : "null"}, _errorMessage=$_errorMessage');
     
-    // If UI is loaded, show only the loaded UI (hide container welcome screen)
+    // If UI is loaded, wrap it with HetuInterpreterProvider so widgets can access the interpreter
     if (!_isLoading && _loadedUI != null && _errorMessage == null) {
-      debugPrint('[ContainerAppShell] Returning loaded UI widget: ${_loadedUI.runtimeType}');
-      return _loadedUI!;
+      debugPrint('[ContainerAppShell] Returning loaded UI widget wrapped with HetuInterpreterProvider: ${_loadedUI.runtimeType}');
+      return HetuInterpreterProvider(
+        interpreter: _interpreter,
+        child: _loadedUI!,
+      );
     }
 
     if (_isLoading) {

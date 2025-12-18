@@ -21,22 +21,42 @@ class ActionHandler {
   /// Actions are Hetu script functions that can access form state and perform operations
   Future<void> executeAction(String actionName, {Map<String, dynamic>? params}) async {
     try {
+      debugPrint('[ActionHandler] Executing action: $actionName');
+      debugPrint('[ActionHandler] Parameters: $params');
+      
       // Prepare action context
       final actionContext = _prepareActionContext(params);
+      debugPrint('[ActionHandler] Action context prepared: ${actionContext.keys.join(", ")}');
       
       // Inject context into Hetu interpreter
-      _injectActionContext(actionContext);
+      try {
+        _injectActionContext(actionContext);
+        debugPrint('[ActionHandler] Action context injected successfully');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to inject action context: $e';
+        debugPrint('[ActionHandler] ERROR: $errorMsg');
+        debugPrint('[ActionHandler] Stack trace: $stackTrace');
+        throw Exception('Failed to prepare action context: $e');
+      }
 
       // Try to call the action function
       try {
+        debugPrint('[ActionHandler] Invoking Hetu function: $actionName');
         interpreter.invoke(actionName, positionalArgs: []);
+        debugPrint('[ActionHandler] Action "$actionName" executed successfully');
         return;
-      } catch (e) {
+      } catch (e, stackTrace) {
+        debugPrint('[ActionHandler] Hetu function "$actionName" not found or failed: $e');
+        debugPrint('[ActionHandler] Stack trace: $stackTrace');
         // If function doesn't exist, try as a string-based action
+        debugPrint('[ActionHandler] Trying string-based action handler...');
         _handleStringAction(actionName, params);
       }
-    } catch (e) {
-      debugPrint('Action execution error: $e');
+    } catch (e, stackTrace) {
+      final errorMsg = 'Failed to execute action "$actionName": $e';
+      debugPrint('[ActionHandler] ERROR: $errorMsg');
+      debugPrint('[ActionHandler] Parameters: $params');
+      debugPrint('[ActionHandler] Stack trace: $stackTrace');
       _showError('Failed to execute action: $actionName');
       rethrow;
     }

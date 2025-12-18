@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../runtime/action_handler.dart';
 import '../binding/drift_binding.dart';
+import '../core/interpreter_provider.dart';
 import 'package:hetu_script/hetu_script.dart';
 
 /// ActionButton widget - Primary or secondary action trigger
@@ -62,12 +63,15 @@ class VlinderActionButton extends StatelessWidget {
     // Get form state from context if available
     final formState = FormStateProvider.of(context);
     
-    // Create action handler
-    final hetuInstance = interpreter ?? (() {
+    // Get interpreter from context provider, fallback to instance variable, or create new one
+    final hetuInstance = HetuInterpreterProvider.of(context) ?? interpreter ?? (() {
+      debugPrint('[VlinderActionButton] WARNING: No interpreter found in context, creating new instance. '
+          'This interpreter will not have access to loaded schemas/workflows/rules.');
       final h = Hetu();
       h.init();
       return h;
     })();
+    
     final handler = ActionHandler(
       interpreter: hetuInstance,
       context: context,
@@ -88,10 +92,13 @@ class VlinderActionButton extends StatelessWidget {
     final action = properties['action'] as String?;
     final style = properties['style'] as String?;
     
-    // Try to get interpreter from context (would need a provider)
-    // For now, create a new one - in full implementation, use InheritedWidget
-    final interpreter = Hetu();
-    interpreter.init();
+    // Get interpreter from context provider
+    // This ensures the action handler has access to loaded schemas/workflows/rules
+    final interpreter = HetuInterpreterProvider.of(context);
+    if (interpreter == null) {
+      debugPrint('[VlinderActionButton] WARNING: No HetuInterpreterProvider found in context. '
+          'Action handlers will not have access to loaded schemas/workflows/rules.');
+    }
 
     return VlinderActionButton(
       label: label,

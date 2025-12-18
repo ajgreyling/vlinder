@@ -7,6 +7,7 @@ import '../widgets/form.dart';
 import '../widgets/text_field.dart';
 import '../widgets/number_field.dart';
 import '../widgets/action_button.dart';
+import '../../container/debug_logger.dart';
 
 /// Main runtime engine for Vlinder
 /// Coordinates parser, factory, and binding to execute ui.ht files
@@ -14,15 +15,28 @@ class VlinderRuntime {
   final Hetu interpreter;
   final WidgetRegistry registry;
   late final UIParser parser;
+  final bool _ownsInterpreter;
 
-  VlinderRuntime()
-      : interpreter = Hetu(),
+  /// Create a VlinderRuntime instance
+  /// 
+  /// [interpreter] - Optional Hetu interpreter instance to use.
+  ///                 If not provided, a new interpreter will be created.
+  ///                 Sharing an interpreter allows UI scripts to access
+  ///                 schemas, workflows, and rules loaded in other parsers.
+  VlinderRuntime({Hetu? interpreter})
+      : interpreter = interpreter ?? Hetu(),
+        _ownsInterpreter = interpreter == null,
         registry = WidgetRegistry() {
-    interpreter.init();
+    // Only initialize if we own the interpreter (newly created)
+    // If shared, assume it's already initialized
+    if (_ownsInterpreter) {
+      this.interpreter.init();
+    }
     _registerWidgets();
+    _registerLoggingFunctions();
     // Initialize parser with the same registry instance
     parser = UIParser(
-      interpreter: interpreter,
+      interpreter: this.interpreter,
       registry: registry,
     );
   }
@@ -52,6 +66,116 @@ class VlinderRuntime {
     registry.register('Text', _buildText);
     debugPrint('[VlinderRuntime] Registered: Text');
     debugPrint('[VlinderRuntime] Widget registration complete. Total widgets: ${registry.getRegisteredWidgets().length}');
+  }
+
+  /// Register logging functions in Hetu interpreter
+  /// These functions allow .ht files to log messages that are sent to the debug logger
+  void _registerLoggingFunctions() {
+    debugPrint('[VlinderRuntime] Registering logging functions...');
+    
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      interpreter.fetch('log');
+      debugPrint('[VlinderRuntime] Logging functions already defined, skipping registration');
+      return;
+    } catch (_) {
+      // Functions don't exist, proceed with definition
+    }
+
+    final loggingScript = '''
+      // Logging functions for Hetu scripts
+      // These functions store logs in a global _hetuLogs array
+      // The logs are processed after script evaluation
+      
+      var _hetuLogs = []
+      
+      fun log(message) {
+        // DEBUG level logging
+        final logEntry = {
+          level: "DEBUG",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logInfo(message) {
+        // INFO level logging
+        final logEntry = {
+          level: "INFO",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logWarning(message) {
+        // WARNING level logging
+        final logEntry = {
+          level: "WARNING",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+      
+      fun logError(message) {
+        // ERROR level logging
+        final logEntry = {
+          level: "ERROR",
+          message: (message ?? "").toString()
+        }
+        _hetuLogs.add(logEntry)
+        return logEntry.message
+      }
+    ''';
+
+    try {
+      interpreter.eval(loggingScript);
+      debugPrint('[VlinderRuntime] Logging functions registered successfully');
+    } catch (e) {
+      debugPrint('[VlinderRuntime] Warning: Could not register logging functions: $e');
+    }
+  }
+
+  /// Process logs from Hetu scripts after evaluation
+  /// Extracts logs from _hetuLogs array and sends them to debug logger
+  void _processHetuLogs() {
+    try {
+      final logsValue = interpreter.fetch('_hetuLogs');
+      if (logsValue is List && logsValue.isNotEmpty) {
+        debugPrint('[VlinderRuntime] Processing ${logsValue.length} Hetu log entries');
+        for (final logEntry in logsValue) {
+          if (logEntry is Map) {
+            final level = logEntry['level']?.toString() ?? 'DEBUG';
+            final message = logEntry['message']?.toString() ?? '';
+            _logFromHetu(level, message);
+          }
+        }
+        // Clear the logs array
+        interpreter.eval('_hetuLogs = []');
+      }
+    } catch (e) {
+      // Ignore errors - logging is not critical
+      debugPrint('[VlinderRuntime] Warning: Could not process Hetu logs: $e');
+    }
+  }
+
+  /// Helper method to log from Hetu scripts
+  /// Called when processing Hetu logs after script evaluation
+  void _logFromHetu(String level, String message) {
+    // Use debugPrint which is intercepted by DebugLogger
+    // Component will be extracted as "HetuScript"
+    final component = 'HetuScript';
+    final logMessage = level == 'DEBUG' 
+        ? '[$component] $message'
+        : level == 'INFO'
+            ? '[$component] INFO: $message'
+            : level == 'WARNING'
+                ? '[$component] WARNING: $message'
+                : '[$component] ERROR: $message';
+    
+    debugPrint(logMessage);
   }
 
   /// Build TextField widget from properties
@@ -132,22 +256,52 @@ class VlinderRuntime {
   /// Load and parse a ui.ht file
   /// Returns a widget tree that can be displayed
   Widget loadUI(String scriptContent, BuildContext context) {
+    final scriptPreview = scriptContent.length > 200 
+        ? scriptContent.substring(0, 200) 
+        : scriptContent;
+    
     try {
       debugPrint('[VlinderRuntime] loadUI called with script length: ${scriptContent.length}');
-      debugPrint('[VlinderRuntime] Script preview (first 200 chars): ${scriptContent.substring(0, scriptContent.length > 200 ? 200 : scriptContent.length)}...');
+      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
       
       // Parse the Hetu script
       debugPrint('[VlinderRuntime] Parsing UI script...');
-      final parsedWidget = parser.parse(scriptContent);
-      debugPrint('[VlinderRuntime] Parse successful: widgetName=${parsedWidget.widgetName}, properties=${parsedWidget.properties.keys.join(", ")}, childrenCount=${parsedWidget.children.length}');
+      ParsedWidget parsedWidget;
+      try {
+        parsedWidget = parser.parse(scriptContent);
+        debugPrint('[VlinderRuntime] Parse successful: widgetName=${parsedWidget.widgetName}, properties=${parsedWidget.properties.keys.join(", ")}, childrenCount=${parsedWidget.children.length}');
+        
+        // Process any logs from Hetu script execution
+        _processHetuLogs();
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to parse UI script: $e';
+        debugPrint('[VlinderRuntime] ERROR: $errorMsg');
+        debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
+        debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
+        return _buildErrorWidget('Failed to parse UI: $e');
+      }
 
       // Build Flutter widget tree
       debugPrint('[VlinderRuntime] Building widget tree...');
-      final widget = parser.buildWidgetTree(context, parsedWidget);
-      debugPrint('[VlinderRuntime] Widget tree built successfully: ${widget.runtimeType}');
+      Widget widget;
+      try {
+        widget = parser.buildWidgetTree(context, parsedWidget);
+        debugPrint('[VlinderRuntime] Widget tree built successfully: ${widget.runtimeType}');
+      } catch (e, stackTrace) {
+        final errorMsg = 'Failed to build widget tree for ${parsedWidget.widgetName}: $e';
+        debugPrint('[VlinderRuntime] ERROR: $errorMsg');
+        debugPrint('[VlinderRuntime] Widget name: ${parsedWidget.widgetName}');
+        debugPrint('[VlinderRuntime] Widget properties: ${parsedWidget.properties.keys.join(", ")}');
+        debugPrint('[VlinderRuntime] Children count: ${parsedWidget.children.length}');
+        debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
+        return _buildErrorWidget('Failed to build widget tree: $e');
+      }
+      
       return widget;
     } catch (e, stackTrace) {
-      debugPrint('[VlinderRuntime] Error in loadUI: $e');
+      final errorMsg = 'Unexpected error in loadUI: $e';
+      debugPrint('[VlinderRuntime] ERROR: $errorMsg');
+      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
       debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
       return _buildErrorWidget('Failed to load UI: $e');
     }
@@ -168,11 +322,24 @@ class VlinderRuntime {
   }
 
   /// Execute Hetu script code (for rules, workflows, etc.)
-  void executeScript(String scriptContent) {
+  void executeScript(String scriptContent, {String? scriptName}) {
+    final scriptPreview = scriptContent.length > 200 
+        ? scriptContent.substring(0, 200) 
+        : scriptContent;
+    
     try {
+      debugPrint('[VlinderRuntime] Executing script${scriptName != null ? " ($scriptName)" : ""} (${scriptContent.length} characters)');
+      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
       interpreter.eval(scriptContent);
-    } catch (e) {
-      debugPrint('Script execution error: $e');
+      debugPrint('[VlinderRuntime] Script executed successfully${scriptName != null ? " ($scriptName)" : ""}');
+      
+      // Process any logs from Hetu script execution
+      _processHetuLogs();
+    } catch (e, stackTrace) {
+      final errorMsg = 'Script execution error${scriptName != null ? " in $scriptName" : ""}: $e';
+      debugPrint('[VlinderRuntime] ERROR: $errorMsg');
+      debugPrint('[VlinderRuntime] Script preview: $scriptPreview...');
+      debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -180,9 +347,14 @@ class VlinderRuntime {
   /// Get a value from the Hetu interpreter
   dynamic getValue(String identifier) {
     try {
-      return interpreter.fetch(identifier);
-    } catch (e) {
-      debugPrint('Failed to get value "$identifier": $e');
+      debugPrint('[VlinderRuntime] Fetching value: $identifier');
+      final value = interpreter.fetch(identifier);
+      debugPrint('[VlinderRuntime] Successfully fetched "$identifier": ${value.runtimeType}');
+      return value;
+    } catch (e, stackTrace) {
+      final errorMsg = 'Failed to get value "$identifier": $e';
+      debugPrint('[VlinderRuntime] ERROR: $errorMsg');
+      debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
       return null;
     }
   }

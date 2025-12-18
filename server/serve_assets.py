@@ -10,8 +10,8 @@ import os
 import sys
 from pathlib import Path
 
-# Default port
-PORT = 8000
+# Default port (internal - accessed via reverse proxy)
+PORT = 8002
 
 # Get assets directory
 ASSETS_DIR = Path(__file__).parent / 'assets'
