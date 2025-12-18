@@ -326,6 +326,31 @@ final result = hetu.invoke('functionName', positionalArgs: [1, 2]); // NOT call(
 - Only `HTStruct` exists as a wrapper type (import from `package:hetu_script/values.dart`)
 - Access HTStruct values: `struct[key]` or iterate with `for (final key in struct.keys)`
 
+**Hetu Script Syntax:**
+- Widget constructor functions **must use named parameters** `{param1, param2}` to match UI script calls
+- UI scripts call widgets with named syntax: `Screen(id: 'x', title: 'y', children: [...])`
+- Constructor functions must be: `fun Screen({id, title, children})` not `fun Screen(id, title, children)`
+- Use **spread syntax** `{...obj1, ...obj2}` to merge objects, NOT `Object.assign()` (not available in Hetu runtime)
+- Example:
+```hetu
+// Correct widget constructor
+fun Screen({id, title, children}) {
+  final result = {
+    widgetType: 'Screen',
+    id: id,
+    title: title,
+    children: children ?? [],
+  }
+  return result
+}
+
+// Correct object merging
+final rules = {
+  ...validationRules,
+  ...businessRules,
+}
+```
+
 **Preventing Function Redefinition:**
 When creating parsers that define Hetu functions, always check if they exist first:
 ```dart
@@ -404,6 +429,8 @@ All parsers:
 - Return Dart native types, not Hetu wrapper types
 - **Check for existing functions before defining them** to prevent "already defined" errors
 - Define constructor functions once in the constructor, not in `load*()` methods
+- **Use named parameters** in constructor functions to match UI script syntax
+- Form widgets use `fields` array (automatically converted to children), empty `children` arrays are skipped
 
 ### Database Integration
 
@@ -426,10 +453,59 @@ Vlinder includes comprehensive debug logging throughout:
 ### Runtime Engine
 
 `VlinderRuntime` coordinates all components:
-- Automatically initializes Hetu interpreter
+- Accepts optional Hetu interpreter instance (shares with ContainerAppShell)
 - Registers SDK widgets with `WidgetRegistry`
 - Provides `loadUI()` to parse and build widget trees
 - Handles errors gracefully with fallback UI
 - Includes debug logging for troubleshooting
+
+### Interpreter Instance Sharing
+
+Vlinder uses a **single Hetu interpreter instance** shared across all components:
+
+1. **ContainerAppShell** creates the interpreter and loads schemas/workflows/rules
+2. **VlinderRuntime** receives the shared interpreter (via constructor parameter)
+3. **HetuInterpreterProvider** wraps the UI to make interpreter available to widgets
+4. **Widgets** access the interpreter via `HetuInterpreterProvider.of(context)`
+
+This pattern ensures:
+- UI scripts can reference schemas, workflows, and rules
+- Action handlers have access to all loaded data
+- Single source of truth for Hetu script state
+- No state isolation between parsers and runtime
+
+**Flutter Widget Patterns:**
+
+**InheritedWidget Access:**
+- Never access InheritedWidgets (like `FormStateProvider`, `HetuInterpreterProvider`) in `initState()`
+- Access InheritedWidgets in `build()` or `didChangeDependencies()` only
+- `didChangeDependencies()` is called after `initState()` and whenever dependencies change
+- This prevents "dependOnInheritedWidgetOfExactType was called before initState() completed" errors
+
+**Form Widgets:**
+- Form widgets use `fields` array for child widgets, not `children`
+- The parser automatically converts `fields` to children widgets
+- Empty `children` arrays on Form widgets are automatically skipped
+
+**Example:**
+```dart
+// Create interpreter once
+final interpreter = Hetu();
+interpreter.init();
+
+// Share with runtime
+final runtime = VlinderRuntime(interpreter: interpreter);
+
+// Wrap UI with provider
+HetuInterpreterProvider(
+  interpreter: interpreter,
+  child: loadedUI,
+)
+
+// Access in widgets
+final interpreter = HetuInterpreterProvider.of(context);
+```
+
+See `sample_app/README.md` for a complete example.
 
 ---

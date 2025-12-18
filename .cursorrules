@@ -72,6 +72,43 @@ if (value is HTStruct) {
 final result = hetu.eval('final x = 42; x * 2'); // Returns 84
 ```
 
+### Hetu Script Syntax Requirements
+- **CRITICAL**: Widget constructor functions MUST use **named parameters** `{param1, param2}` to match UI script calls
+- UI scripts call widgets with named parameter syntax: `Screen(id: 'x', title: 'y', children: [...])`
+- Constructor functions must be defined with named parameters: `fun Screen({id, title, children})`
+- If constructors use positional parameters, Hetu won't match named arguments and properties will be null/empty
+- Example:
+```hetu
+// CORRECT - Named parameters
+fun Screen({id, title, children}) {
+  final result = {
+    widgetType: 'Screen',
+    id: id,
+    title: title,
+    children: children ?? [],
+  }
+  return result
+}
+
+// INCORRECT - Positional parameters won't match named calls
+fun Screen(id, title, children) { ... }  // WRONG
+```
+
+### Object Merging in Hetu Scripts
+- Use **spread syntax** `{...obj1, ...obj2}` to merge objects, NOT `Object.assign()`
+- `Object.assign()` is not available in Hetu runtime context
+- Example:
+```hetu
+// CORRECT - Spread syntax
+final rules = {
+  ...validationRules,
+  ...businessRules,
+}
+
+// INCORRECT - Object.assign doesn't exist
+final rules = Object.assign({}, validationRules, businessRules)  // WRONG
+```
+
 ## Architecture Patterns
 
 ### Vlinder Runtime
@@ -119,6 +156,36 @@ void _initializeConstructors() {
 final handler = ActionHandler(interpreter: hetu);
 await handler.executeAction('actionName', params: {...});
 ```
+
+### Interpreter Instance Sharing
+- **CRITICAL**: Share a single Hetu interpreter instance across all components
+- This ensures UI scripts can access schemas, workflows, and rules loaded by parsers
+- Pattern:
+  1. Create interpreter in `ContainerAppShell` first
+  2. Pass it to `VlinderRuntime(interpreter: sharedInterpreter)`
+  3. Wrap loaded UI with `HetuInterpreterProvider` so widgets can access it
+  4. Widgets use `HetuInterpreterProvider.of(context)` to get the interpreter
+- Example:
+```dart
+// In ContainerAppShell
+_interpreter = Hetu();
+_interpreter.init();
+_runtime = VlinderRuntime(interpreter: _interpreter);
+
+// Wrap UI with provider
+return HetuInterpreterProvider(
+  interpreter: _interpreter,
+  child: _loadedUI!,
+);
+
+// In widgets
+final interpreter = HetuInterpreterProvider.of(context);
+```
+- Benefits:
+  - Single source of truth for all Hetu state
+  - UI scripts can reference schemas/workflows/rules
+  - Action handlers have access to all loaded data
+  - Prevents state isolation issues
 
 ## File Organization
 
@@ -207,6 +274,57 @@ Padding(
 )
 ```
 
+## Flutter Widget Patterns
+
+### InheritedWidget Access
+- **CRITICAL**: Never access InheritedWidgets (like `FormStateProvider`, `HetuInterpreterProvider`) in `initState()`
+- Access InheritedWidgets in `build()` or `didChangeDependencies()` only
+- `didChangeDependencies()` is called after `initState()` and whenever dependencies change
+- Example:
+```dart
+// CORRECT - Access in didChangeDependencies()
+class _VlinderTextFieldState extends State<VlinderTextField> {
+  FormStateManager? _formState;
+  bool _listenerAdded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+    // DO NOT access FormStateProvider here
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final formState = FormStateProvider.of(context); // OK here
+    if (formState != null && !_listenerAdded) {
+      _formState = formState;
+      // Set up listeners, load initial values, etc.
+      _listenerAdded = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final formState = FormStateProvider.of(context); // Also OK here
+    // Use formState in build
+  }
+}
+
+// INCORRECT - Accessing in initState() causes runtime error
+@override
+void initState() {
+  super.initState();
+  final formState = FormStateProvider.of(context); // WRONG - causes error
+}
+```
+
+### Form Widgets
+- Form widgets use `fields` array for child widgets, not `children`
+- The parser automatically handles this - `fields` become children
+- Empty `children` arrays on Form widgets are automatically skipped
+
 ## Best Practices
 
 1. **Always initialize Hetu** - Call `init()` immediately after creating Hetu instance
@@ -221,4 +339,9 @@ Padding(
 10. **Prevent function redefinition** - Always check if Hetu functions exist before defining them
 11. **Use debug logging** - Add comprehensive debug output with component prefixes
 12. **Use sqlite3 for custom SQL** - Don't try to access executor through NativeDatabase
+13. **Share interpreter instance** - Use single interpreter across ContainerAppShell, VlinderRuntime, and widgets via HetuInterpreterProvider
+14. **Access interpreter from context** - Widgets should use `HetuInterpreterProvider.of(context)` instead of creating new instances
+15. **Use named parameters in Hetu constructors** - Widget constructor functions must use `{param1, param2}` syntax
+16. **Use spread syntax for object merging** - Use `{...obj1, ...obj2}` not `Object.assign()`
+17. **Access InheritedWidgets correctly** - Use `didChangeDependencies()` or `build()`, never `initState()`
 

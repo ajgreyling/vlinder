@@ -85,3 +85,9 @@ final productSchema = {
 log("Product schema defined successfully")
 logInfo("Schema definitions complete")
 
+// Aggregate map for parsers
+final schemas = {
+  customer: customerSchema,
+  product: productSchema,
+}
+

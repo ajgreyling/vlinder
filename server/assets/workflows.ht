@@ -78,3 +78,9 @@ final inspectionWorkflow = {
 log("Inspection workflow initialized: ${inspectionWorkflow.id}")
 logInfo("Workflow definitions complete")
 
+// Aggregate map for parsers
+final workflows = {
+  customer_registration: customerRegistrationWorkflow,
+  inspection: inspectionWorkflow,
+}
+

@@ -50,3 +50,9 @@ final businessRules = {
 log("Business rules loaded: ${businessRules.keys.length} rules")
 logInfo("Rules definitions complete")
 
+// Aggregate map for parsers - merge validationRules and businessRules using spread syntax
+final rules = {
+  ...validationRules,
+  ...businessRules,
+}
+

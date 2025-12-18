@@ -28,15 +28,25 @@ class VlinderTextField extends StatefulWidget {
 
 class _VlinderTextFieldState extends State<VlinderTextField> {
   late final TextEditingController _controller;
+  FormStateManager? _formState;
+  bool _listenerAdded = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     
-    // Load initial value from form state if available
+    // Access FormStateProvider here (after initState completes)
     final formState = FormStateProvider.of(context);
-    if (formState != null) {
+    if (formState != null && !_listenerAdded) {
+      _formState = formState;
+      
+      // Load initial value from form state if available
       final value = formState.getValue(widget.field);
       if (value != null) {
         _controller.text = value.toString();
@@ -44,14 +54,14 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
       
       // Listen to form state changes
       formState.valueNotifier.addListener(_onFormStateChanged);
+      _listenerAdded = true;
     }
   }
 
   @override
   void dispose() {
-    final formState = FormStateProvider.of(context);
-    if (formState != null) {
-      formState.valueNotifier.removeListener(_onFormStateChanged);
+    if (_formState != null && _listenerAdded) {
+      _formState!.valueNotifier.removeListener(_onFormStateChanged);
     }
     _controller.dispose();
     super.dispose();

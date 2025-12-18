@@ -45,50 +45,80 @@ class UIParser {
     }
 
     final widgetConstructors = '''
-      fun Screen(id, title, children) {
+      fun Screen({id, title, children}) {
+        // Explicitly handle children parameter
+        // Hetu may pass children as null, undefined, or an empty list
+        var childrenList = []
+        if (children != null) {
+          // If children is provided, use it directly
+          // Hetu should have already evaluated the array elements
+          if (children is List) {
+            childrenList = children
+          } else {
+            // If it's not a list, wrap it in a list
+            childrenList = [children]
+          }
+        }
         final result = {
           widgetType: 'Screen',
           id: id,
           title: title,
-          children: children ?? [],
+          children: childrenList,
         }
         return result
       }
       
-      fun Form(entity, fields, children) {
+      fun Form({entity, fields, children}) {
+        // Explicitly handle fields and children parameters
+        var fieldsList = []
+        if (fields != null) {
+          if (fields is List) {
+            fieldsList = fields
+          } else {
+            fieldsList = [fields]
+          }
+        }
+        var childrenList = []
+        if (children != null) {
+          if (children is List) {
+            childrenList = children
+          } else {
+            childrenList = [children]
+          }
+        }
         final result = {
           widgetType: 'Form',
           entity: entity,
-          fields: fields ?? [],
-          children: children ?? [],
+          fields: fieldsList,
+          children: childrenList,
         }
         return result
       }
       
-      fun TextField(field, label, required, placeholder) {
+      fun TextField({field, label, required, placeholder}) {
         final result = {
           widgetType: 'TextField',
           field: field,
           label: label,
-          required: required ?? false,
+          required: (required != null) ? required : false,
           placeholder: placeholder,
         }
         return result
       }
       
-      fun NumberField(field, label, type, required, placeholder) {
+      fun NumberField({field, label, type, required, placeholder}) {
         final result = {
           widgetType: 'NumberField',
           field: field,
           label: label,
           type: type,
-          required: required ?? false,
+          required: (required != null) ? required : false,
           placeholder: placeholder,
         }
         return result
       }
       
-      fun ActionButton(label, action, style) {
+      fun ActionButton({label, action, style}) {
         final result = {
           widgetType: 'ActionButton',
           label: label,
@@ -98,7 +128,7 @@ class UIParser {
         return result
       }
       
-      fun Text(text, style, align, padding) {
+      fun Text({text, style, align, padding}) {
         final result = {
           widgetType: 'Text',
           text: text,
@@ -165,6 +195,23 @@ class UIParser {
         debugPrint('[UIParser] Attempting to fetch "screen" variable...');
         screenValue = interpreter.fetch('screen');
         debugPrint('[UIParser] Successfully fetched "screen" variable: ${screenValue.runtimeType}');
+        
+        // Debug: Inspect the screen value immediately after fetching
+        if (screenValue is HTStruct) {
+          debugPrint('[UIParser] Screen HTStruct keys immediately after fetch: ${screenValue.keys.join(", ")}');
+          if (screenValue.containsKey('children')) {
+            final childrenValue = screenValue['children'];
+            debugPrint('[UIParser] Children value type immediately after fetch: ${childrenValue.runtimeType}');
+            if (childrenValue is List) {
+              debugPrint('[UIParser] Children list length immediately after fetch: ${childrenValue.length}');
+              if (childrenValue.isNotEmpty) {
+                debugPrint('[UIParser] First child type immediately after fetch: ${childrenValue[0].runtimeType}');
+              }
+            }
+          } else {
+            debugPrint('[UIParser] WARNING: Screen HTStruct does not contain "children" key!');
+          }
+        }
       } catch (e) {
         debugPrint('[UIParser] Failed to fetch "screen": $e');
         // Try alternative names
@@ -216,7 +263,7 @@ class UIParser {
   /// Get widget constructor functions script
   String _getWidgetConstructorsScript() {
     return '''
-      fun Screen(id, title, children) {
+      fun Screen({id, title, children}) {
         final result = {
           widgetType: 'Screen',
           id: id,
@@ -226,7 +273,7 @@ class UIParser {
         return result
       }
       
-      fun Form(entity, fields, children) {
+      fun Form({entity, fields, children}) {
         final result = {
           widgetType: 'Form',
           entity: entity,
@@ -236,7 +283,7 @@ class UIParser {
         return result
       }
       
-      fun TextField(field, label, required, placeholder) {
+      fun TextField({field, label, required, placeholder}) {
         final result = {
           widgetType: 'TextField',
           field: field,
@@ -247,7 +294,7 @@ class UIParser {
         return result
       }
       
-      fun NumberField(field, label, type, required, placeholder) {
+      fun NumberField({field, label, type, required, placeholder}) {
         final result = {
           widgetType: 'NumberField',
           field: field,
@@ -259,7 +306,7 @@ class UIParser {
         return result
       }
       
-      fun ActionButton(label, action, style) {
+      fun ActionButton({label, action, style}) {
         final result = {
           widgetType: 'ActionButton',
           label: label,
@@ -269,7 +316,7 @@ class UIParser {
         return result
       }
       
-      fun Text(text, style, align, padding) {
+      fun Text({text, style, align, padding}) {
         final result = {
           widgetType: 'Text',
           text: text,
@@ -441,6 +488,15 @@ class UIParser {
         if (val == null) {
           debugPrint('[UIParser] parseFromHTValue: $keyStr is null, skipping');
           continue;
+        }
+        
+        // Skip empty 'children' array if we already have 'fields' (Form widgets)
+        // Form widgets use 'fields' for their child widgets, 'children' is typically empty
+        if (keyStr == 'children' && value.containsKey('fields')) {
+          if (val is List && (val as List).isEmpty) {
+            debugPrint('[UIParser] parseFromHTValue: Skipping empty children array (Form widget uses fields instead)');
+            continue;
+          }
         }
         
         // Parse children directly from HTStruct without converting first
