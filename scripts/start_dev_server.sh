@@ -30,6 +30,74 @@ if ! command -v ngrok &> /dev/null; then
     exit 1
 fi
 
+# Cleanup existing processes
+echo -e "${YELLOW}Checking for existing processes...${NC}"
+
+# Kill existing Python server if running
+if [ -f /tmp/vlinder_server.pid ]; then
+    OLD_SERVER_PID=$(cat /tmp/vlinder_server.pid 2>/dev/null)
+    if [ -n "$OLD_SERVER_PID" ] && kill -0 $OLD_SERVER_PID 2>/dev/null; then
+        echo -e "${YELLOW}Stopping existing Python server (PID: $OLD_SERVER_PID)${NC}"
+        kill $OLD_SERVER_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Kill any Python serve_assets.py processes
+EXISTING_PYTHON=$(ps aux | grep "serve_assets.py" | grep -v grep | awk '{print $2}')
+if [ -n "$EXISTING_PYTHON" ]; then
+    echo -e "${YELLOW}Stopping existing Python server processes${NC}"
+    echo "$EXISTING_PYTHON" | xargs kill 2>/dev/null || true
+    sleep 1
+fi
+
+# Kill existing ngrok if running
+if [ -f /tmp/vlinder_ngrok.pid ]; then
+    OLD_NGROK_PID=$(cat /tmp/vlinder_ngrok.pid 2>/dev/null)
+    if [ -n "$OLD_NGROK_PID" ] && kill -0 $OLD_NGROK_PID 2>/dev/null; then
+        echo -e "${YELLOW}Stopping existing ngrok (PID: $OLD_NGROK_PID)${NC}"
+        kill $OLD_NGROK_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Kill any ngrok processes pointing to port 8000
+EXISTING_NGROK=$(ps aux | grep "ngrok http 8000" | grep -v grep | awk '{print $2}')
+if [ -n "$EXISTING_NGROK" ]; then
+    echo -e "${YELLOW}Stopping existing ngrok processes for port 8000${NC}"
+    echo "$EXISTING_NGROK" | xargs kill 2>/dev/null || true
+    sleep 1
+fi
+
+# Check if port 8000 is still in use
+if lsof -i :8000 >/dev/null 2>&1; then
+    PORT_PID=$(lsof -ti :8000)
+    if [ -n "$PORT_PID" ]; then
+        echo -e "${YELLOW}Port 8000 is still in use (PID: $PORT_PID), killing...${NC}"
+        kill $PORT_PID 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# Check if port 4040 (ngrok API) is in use and kill associated ngrok
+if lsof -i :4040 >/dev/null 2>&1; then
+    NGROK_API_PID=$(lsof -ti :4040)
+    if [ -n "$NGROK_API_PID" ]; then
+        # Check if it's actually ngrok
+        if ps -p $NGROK_API_PID -o comm= | grep -q ngrok; then
+            echo -e "${YELLOW}Stopping ngrok using port 4040 (PID: $NGROK_API_PID)${NC}"
+            kill $NGROK_API_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+fi
+
+# Clean up old PID files
+rm -f /tmp/vlinder_server.pid /tmp/vlinder_ngrok.pid /tmp/vlinder_flutter.pid
+
+echo -e "${GREEN}Cleanup complete. Starting fresh...${NC}"
+echo ""
+
 # Start Python server in background
 echo -e "${GREEN}Starting Python HTTP server...${NC}"
 cd "$SERVER_DIR"
@@ -106,28 +174,38 @@ if command -v flutter &> /dev/null; then
         DEVICES_OUTPUT=$(flutter devices 2>&1)
         echo "$DEVICES_OUTPUT"
         
-        # Parse device IDs from flutter devices output
-        # Format: device_id • device_name • device_type
-        DEVICE_IDS=$(echo "$DEVICES_OUTPUT" | grep -E '^[^•]+•' | awk -F '•' '{print $1}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
+        # Parse device information from flutter devices output
+        # Format: device_name • device_id • platform • version
+        # We need the device_id (second field) for flutter run
         
-        if [ -z "$DEVICE_IDS" ]; then
+        if [ -z "$(echo "$DEVICES_OUTPUT" | grep -E '•')" ]; then
             echo -e "${YELLOW}No devices found. Make sure a device is connected or emulator is running.${NC}"
             echo -e "${YELLOW}Continuing with server only...${NC}"
         else
-            # Convert to array
+            # Parse devices - extract device_id (2nd field) and device_name (1st field)
+            # Format: device_name • device_id • platform • version
             DEVICE_ARRAY=()
             DEVICE_NAMES=()
             INDEX=1
             
+            # Filter device lines (exclude header lines)
+            DEVICE_LINES=$(echo "$DEVICES_OUTPUT" | grep -E '•' | grep -v '^Found' | grep -v '^Checking')
+            
             while IFS= read -r line; do
                 if [ -n "$line" ]; then
-                    DEVICE_ARRAY+=("$line")
-                    DEVICE_NAME=$(echo "$DEVICES_OUTPUT" | grep "$line" | awk -F '•' '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    DEVICE_NAMES+=("$DEVICE_NAME")
-                    echo "  [$INDEX] $DEVICE_NAME ($line)"
-                    INDEX=$((INDEX + 1))
+                    # Extract device name (first field before •)
+                    DEVICE_NAME=$(echo "$line" | awk -F '•' '{print $1}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    # Extract device ID (second field after first •) - this is what flutter run needs
+                    DEVICE_ID=$(echo "$line" | awk -F '•' '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    
+                    if [ -n "$DEVICE_ID" ] && [ -n "$DEVICE_NAME" ]; then
+                        DEVICE_ARRAY+=("$DEVICE_ID")
+                        DEVICE_NAMES+=("$DEVICE_NAME")
+                        echo "  [$INDEX] $DEVICE_NAME ($DEVICE_ID)"
+                        INDEX=$((INDEX + 1))
+                    fi
                 fi
-            done <<< "$DEVICE_IDS"
+            done <<< "$DEVICE_LINES"
             
             # Ask user to select device
             echo ""
