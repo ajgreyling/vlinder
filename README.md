@@ -94,10 +94,11 @@ They operate strictly within a **sandboxed API surface**.
 
 Only the following files are delivered to the device when behaviour changes:
 
-- `schema.ht`
-- `workflows.ht`
-- `ui.ht`
-- `rules.ht`
+- `schema.ht` - Entity schemas and field definitions
+- `workflows.ht` - Workflow definitions and step transitions
+- `ui.ht` - UI screen and widget definitions
+- `rules.ht` - Business rules and validation logic
+- `actions.ht` - Action handler functions (required)
 
 For a new feature release:
 - **No app update is required**
@@ -443,9 +444,13 @@ Vlinder uses **Drift** for SQLite ORM and **sqlite3** for custom SQL execution:
 
 #### Database API in Hetu Scripts
 
-Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database operations are queued during script execution and processed asynchronously by `ActionHandler` after action completion.
+Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database functions are **automatically registered** in the Hetu interpreter during app initialization and are available in all `.ht` files (actions.ht, workflows.ht, rules.ht, etc.).
+
+**Important:** Database operations use an **async queue pattern** - they are queued during script execution and processed asynchronously by `ActionHandler` after action completion.
 
 **Available Database Functions:**
+
+All database functions are registered automatically and available in Hetu scripts:
 
 ```hetu
 // Raw SQL execution (INSERT, UPDATE, DELETE)
@@ -453,52 +458,60 @@ final opId = executeSQL("INSERT INTO customer (name, email) VALUES (?, ?)", ["Jo
 
 // SELECT queries with results
 final queryOpId = query("SELECT * FROM customer WHERE age > ?", [18])
-final customers = getDbResult(queryOpId) // Returns list of maps
 
 // CRUD convenience methods
 final saveOpId = save('Customer', {name: 'John', email: 'john@example.com'})
-final saved = getDbResult(saveOpId) // Returns saved entity with generated ID
-
 final findOpId = findById('Customer', 1)
-final customer = getDbResult(findOpId) // Returns single entity or null
-
-final findAllOpId = findAll('Customer', {age: {gt: 18}}, {orderBy: 'name'}, 10)
-final allCustomers = getDbResult(findAllOpId) // Returns list of entities
-
+final findAllOpId = findAll('Customer', {age: {gt: 18}}, 'name', 10)
 final updateOpId = update('Customer', 1, {name: 'Jane'})
-final updated = getDbResult(updateOpId) // Returns updated entity
-
 final deleteOpId = delete('Customer', 1)
-final deleted = getDbResult(deleteOpId) // Returns true if deleted
+
+// Get results (after operations are processed)
+final result = getDbResult(opId)
+
+// Clear results
+clearDbResults()
 ```
 
-**Usage Pattern:**
+**Function Calling Pattern:**
 
-Database operations use an async queue pattern:
+1. **Call database function** - Returns an operation ID immediately (operation is queued)
+2. **Action completes** - ActionHandler automatically processes all queued operations
+3. **Get results** - Use `getDbResult(opId)` to retrieve results (in subsequent actions or function calls)
 
-1. **Queue Operation**: Call database function (e.g., `save()`) which returns an operation ID
-2. **Process Operations**: `ActionHandler` automatically processes queued operations after action execution
-3. **Get Results**: Use `getDbResult(opId)` to retrieve the result of a specific operation
-4. **Clear Results**: Call `clearDbResults()` to clean up after processing
-
-**Example Action Function:**
+**Example Action Function (actions.ht):**
 
 ```hetu
+// Define action function with NO parameters (ActionHandler injects actionContext)
 fun submit_customer() {
-  // Get form data from action context
-  final customerData = actionContext.formValues
+  // Access form values from actionContext (injected by ActionHandler)
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
   
-  // Queue save operation
-  final saveOpId = save('Customer', customerData)
+  // Validate before saving
+  if (!isValid) {
+    logError("Form validation failed")
+    return
+  }
   
-  // Operation is processed automatically by ActionHandler
-  // Results are available after action completes
+  // Queue database save operation
+  // Returns operation ID immediately, operation is processed after function completes
+  final saveOpId = save('Customer', formValues)
   
-  // Get result (called after processing)
-  final result = getDbResult(saveOpId)
-  logInfo("Customer saved with ID: ${result.id}")
+  logInfo("Save operation queued with ID: ${saveOpId}")
+  
+  // Note: Results are available via getDbResult(saveOpId) AFTER ActionHandler
+  // processes the operations. You cannot get results synchronously within the same function.
 }
 ```
+
+**Key Points:**
+
+- Database functions (`save()`, `query()`, etc.) are **automatically available** - no import needed
+- Functions **queue operations** and return operation IDs immediately
+- Operations are **processed asynchronously** after the action function completes
+- Use `getDbResult(opId)` to retrieve results in **subsequent actions or function calls**
+- All functions use the **same interpreter instance** that registered them (via HetuInterpreterProvider)
 
 **Form Auto-Save:**
 
@@ -548,6 +561,76 @@ if (result.error != null) {
 }
 ```
 
+#### Action Functions (actions.ht)
+
+Action functions are Hetu script functions defined in `actions.ht` that handle user interactions (button clicks, form submissions, etc.). The `actions.ht` file is **required** and must be present for the app to initialize.
+
+**Action Function Definition:**
+
+```hetu
+// actions.ht - Define action functions
+fun submit_customer() {
+  // Access form values from actionContext (injected by ActionHandler)
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  
+  // Validate form
+  if (!isValid) {
+    logError("Form validation failed")
+    return
+  }
+  
+  // Use database API functions
+  final saveOpId = save('Customer', formValues)
+  logInfo("Customer save queued: ${saveOpId}")
+}
+```
+
+**Key Requirements:**
+
+1. **No parameters** - Action functions must be defined with NO parameters: `fun submit_customer()` not `fun submit_customer(params)`
+2. **Access actionContext** - Form values and validation state are available via `actionContext.formValues` and `actionContext.isValid`
+3. **Database functions available** - All database functions (`save()`, `query()`, etc.) are automatically available
+4. **Logging functions available** - Use `log()`, `logInfo()`, `logWarning()`, `logError()` for debugging
+
+**Action Invocation:**
+
+Actions are invoked when buttons are clicked:
+
+```hetu
+// ui.ht
+ActionButton(
+  label: 'Register',
+  action: 'submit_customer', // Calls submit_customer() function from actions.ht
+  style: 'primary',
+)
+```
+
+**Action Execution Flow:**
+
+1. User clicks button with `action: 'submit_customer'`
+2. ActionHandler checks if `submit_customer` function exists in interpreter
+3. If found, injects `actionContext` with form values and validation state
+4. Invokes the Hetu function: `interpreter.invoke('submit_customer')`
+5. Function executes and queues database operations
+6. After function completes, ActionHandler processes queued database operations
+7. Results are stored in `_dbResults` and accessible via `getDbResult(opId)`
+
+**Fallback to String-Based Actions:**
+
+If a Hetu function is not found, ActionHandler falls back to string-based actions:
+- `submit` or `submit_*` - Form submission
+- `navigate_*` - Navigation
+- `cancel` - Cancel action
+
+**Best Practices:**
+
+- Define all custom actions in `actions.ht` (required file)
+- Use database API functions for data persistence
+- Validate form data before saving
+- Use logging functions for debugging
+- Handle errors gracefully with try-catch if needed
+
 ### Debug Logging
 
 Vlinder includes comprehensive debug logging throughout:
@@ -570,14 +653,18 @@ Vlinder includes comprehensive debug logging throughout:
 
 Vlinder uses a **single Hetu interpreter instance** shared across all components:
 
-1. **ContainerAppShell** creates the interpreter and loads schemas/workflows/rules
+1. **ContainerAppShell** creates the interpreter and:
+   - Registers database functions (`save()`, `query()`, etc.)
+   - Registers logging functions (`log()`, `logInfo()`, etc.)
+   - Loads schemas, workflows, rules, and actions
 2. **VlinderRuntime** receives the shared interpreter (via constructor parameter)
 3. **HetuInterpreterProvider** wraps the UI to make interpreter available to widgets
 4. **Widgets** access the interpreter via `HetuInterpreterProvider.of(context)`
 
 This pattern ensures:
 - UI scripts can reference schemas, workflows, and rules
-- Action handlers have access to all loaded data
+- Action handlers have access to all loaded data and database functions
+- Database functions are available in all `.ht` files (actions.ht, workflows.ht, etc.)
 - Single source of truth for Hetu script state
 - No state isolation between parsers and runtime
 

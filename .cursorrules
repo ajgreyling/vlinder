@@ -151,11 +151,50 @@ void _initializeConstructors() {
 ### Action Handler
 - Use `ActionHandler` for executing Hetu script actions
 - Actions are invoked using `interpreter.invoke()`
+- ActionHandler tries Hetu functions first, then falls back to string-based actions
 - Example:
 ```dart
 final handler = ActionHandler(interpreter: hetu);
 await handler.executeAction('actionName', params: {...});
 ```
+
+### Action Functions (actions.ht)
+- **REQUIRED**: `actions.ht` file must exist and be loaded for app initialization
+- Action functions are Hetu script functions defined in `actions.ht`
+- **CRITICAL**: Action functions must be defined with **NO parameters**
+- ActionHandler injects `actionContext` automatically with form values and validation state
+- Example:
+```hetu
+// CORRECT - No parameters, access actionContext
+fun submit_customer() {
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  // ... use formValues and isValid
+}
+
+// INCORRECT - Don't define parameters
+fun submit_customer(params) { ... }  // WRONG
+```
+
+### Database Functions in Hetu Scripts
+- Database functions (`save()`, `query()`, `executeSQL()`, etc.) are **automatically registered** in the Hetu interpreter
+- They are available in all `.ht` files (actions.ht, workflows.ht, rules.ht, etc.)
+- **CRITICAL**: Database operations use an **async queue pattern**
+  - Functions queue operations and return operation IDs immediately
+  - Operations are processed by ActionHandler **after** the action function completes
+  - Results are available via `getDbResult(opId)` in subsequent actions or function calls
+- Example:
+```hetu
+fun submit_customer() {
+  // Queue operation - returns immediately
+  final saveOpId = save('Customer', actionContext.formValues)
+  
+  // Operation is processed AFTER this function completes
+  // Cannot get results synchronously within the same function
+}
+```
+- All database functions use the **same interpreter instance** (shared via HetuInterpreterProvider)
+- Functions are registered in `ContainerAppShell._registerDatabaseFunctions()`
 
 ### Interpreter Instance Sharing
 - **CRITICAL**: Share a single Hetu interpreter instance across all components
@@ -185,6 +224,7 @@ final interpreter = HetuInterpreterProvider.of(context);
   - Single source of truth for all Hetu state
   - UI scripts can reference schemas/workflows/rules
   - Action handlers have access to all loaded data
+  - Database functions are available in all `.ht` files
   - Prevents state isolation issues
 
 ## File Organization
@@ -344,4 +384,9 @@ void initState() {
 15. **Use named parameters in Hetu constructors** - Widget constructor functions must use `{param1, param2}` syntax
 16. **Use spread syntax for object merging** - Use `{...obj1, ...obj2}` not `Object.assign()`
 17. **Access InheritedWidgets correctly** - Use `didChangeDependencies()` or `build()`, never `initState()`
+18. **Define action functions with NO parameters** - ActionHandler injects `actionContext` automatically
+19. **Database functions are automatically available** - No import needed, they're registered in ContainerAppShell
+20. **Database operations are async** - Functions queue operations, results available via `getDbResult(opId)` after processing
+21. **actions.ht is required** - Must exist and be loaded for app initialization
+22. **Use actionContext in action functions** - Access form values via `actionContext.formValues` and validation via `actionContext.isValid`
 
