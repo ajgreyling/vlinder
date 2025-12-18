@@ -12,7 +12,8 @@ class AssetFetcher {
   AssetFetcher({String? serverUrl}) : serverUrl = serverUrl?.trim();
 
   /// Fetch all asset files
-  Future<Map<String, String>> fetchAllAssets() async {
+  /// [forceRefresh] if true, bypasses cache and fetches fresh from server
+  Future<Map<String, String>> fetchAllAssets({bool forceRefresh = false}) async {
     final assets = <String, String>{};
 
     // If no server URL, only use cache
@@ -31,13 +32,17 @@ class AssetFetcher {
 
     for (final fileName in ContainerConfig.assetFiles) {
       try {
-        final content = await fetchAsset(fileName);
+        final content = await fetchAsset(fileName, forceRefresh: forceRefresh);
         assets[fileName] = content;
       } catch (e) {
-        // Try to load from cache if fetch fails
-        final cached = await loadFromCache(fileName);
-        if (cached != null) {
-          assets[fileName] = cached;
+        // Try to load from cache if fetch fails (unless forceRefresh is true)
+        if (!forceRefresh) {
+          final cached = await loadFromCache(fileName);
+          if (cached != null) {
+            assets[fileName] = cached;
+          } else {
+            throw Exception('Failed to fetch $fileName: $e');
+          }
         } else {
           throw Exception('Failed to fetch $fileName: $e');
         }
@@ -48,7 +53,8 @@ class AssetFetcher {
   }
 
   /// Fetch a single asset file
-  Future<String> fetchAsset(String fileName) async {
+  /// [forceRefresh] if true, bypasses cache and fetches fresh from server
+  Future<String> fetchAsset(String fileName, {bool forceRefresh = false}) async {
     if (serverUrl == null || serverUrl!.isEmpty) {
       // No server URL, try cache only
       debugPrint('[AssetFetcher] No server URL, trying cache for $fileName');
@@ -63,7 +69,7 @@ class AssetFetcher {
     // Trim serverUrl to handle any whitespace issues
     final trimmedServerUrl = serverUrl!.trim();
     final url = '$trimmedServerUrl/$fileName';
-    debugPrint('[AssetFetcher] Fetching $fileName from $url');
+    debugPrint('[AssetFetcher] Fetching $fileName from $url${forceRefresh ? " (force refresh)" : ""}');
     
     try {
       final response = await http.get(Uri.parse(url));
@@ -82,12 +88,14 @@ class AssetFetcher {
       }
     } catch (e) {
       debugPrint('[AssetFetcher] Error fetching $fileName: $e');
-      // Try cache as fallback
-      debugPrint('[AssetFetcher] Trying cache fallback for $fileName');
-      final cached = await loadFromCache(fileName);
-      if (cached != null) {
-        debugPrint('[AssetFetcher] Loaded $fileName from cache fallback');
-        return cached;
+      // Try cache as fallback (unless forceRefresh is true)
+      if (!forceRefresh) {
+        debugPrint('[AssetFetcher] Trying cache fallback for $fileName');
+        final cached = await loadFromCache(fileName);
+        if (cached != null) {
+          debugPrint('[AssetFetcher] Loaded $fileName from cache fallback');
+          return cached;
+        }
       }
       debugPrint('[AssetFetcher] No cache available for $fileName, rethrowing error');
       rethrow;

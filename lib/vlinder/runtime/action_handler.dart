@@ -53,6 +53,12 @@ class ActionHandler {
         throw Exception('Failed to prepare action context: $e');
       }
 
+      // Ensure database functions are available BEFORE invoking the action
+      // This is critical because actions may call save(), findAll(), etc.
+      if (databaseAPI != null) {
+        _ensureDatabaseFunctionsAvailable();
+      }
+      
       // Try to call the action as a Hetu function first
       // Check if function exists before attempting to invoke
       try {
@@ -81,6 +87,16 @@ class ActionHandler {
         interpreter.invoke(actionName, positionalArgs: []);
         debugPrint('[ActionHandler] Action "$actionName" executed successfully');
         
+        // Check if operations were queued before processing
+        try {
+          final opsBefore = interpreter.fetch('_dbOperations');
+          if (opsBefore is List) {
+            debugPrint('[ActionHandler] Operations queued before processing: ${opsBefore.length}');
+          }
+        } catch (e) {
+          debugPrint('[ActionHandler] Could not check operations before processing: $e');
+        }
+        
         // Process any database operations queued by the action
         if (databaseAPI != null) {
           await _processDatabaseOperations();
@@ -93,7 +109,10 @@ class ActionHandler {
               debugPrint('[ActionHandler] Found saved customer query ID: $savedCustomerQueryId');
               // Get the query result using getDbResult function
               try {
+                debugPrint('[ActionHandler] Calling getDbResult with operation ID: $savedCustomerQueryId');
                 final queryResult = interpreter.invoke('getDbResult', positionalArgs: [savedCustomerQueryId]);
+                debugPrint('[ActionHandler] getDbResult returned: $queryResult (type: ${queryResult.runtimeType})');
+                
                 if (queryResult != null) {
                   debugPrint('[ActionHandler] Loaded saved customer from database: $queryResult');
                   debugPrint('[ActionHandler] Navigating to saved customer view screen');
@@ -102,9 +121,17 @@ class ActionHandler {
                   interpreter.eval('_savedCustomerQueryId = null');
                 } else {
                   debugPrint('[ActionHandler] Query result is null for operation ID: $savedCustomerQueryId');
+                  debugPrint('[ActionHandler] Checking _dbResults directly...');
+                  try {
+                    final dbResults = interpreter.fetch('_dbResults');
+                    debugPrint('[ActionHandler] _dbResults contents: $dbResults');
+                  } catch (e) {
+                    debugPrint('[ActionHandler] Could not fetch _dbResults: $e');
+                  }
                 }
-              } catch (e) {
+              } catch (e, stackTrace) {
                 debugPrint('[ActionHandler] Error getting query result: $e');
+                debugPrint('[ActionHandler] Stack trace: $stackTrace');
               }
             }
           } catch (e) {
@@ -339,74 +366,136 @@ class ActionHandler {
     }
   }
 
+  /// Ensure database functions are available in the interpreter
+  /// This must be called BEFORE invoking actions that may use database functions
+  void _ensureDatabaseFunctionsAvailable() {
+    try {
+      // Check if database functions exist
+      interpreter.fetch('save');
+      debugPrint('[ActionHandler] Database functions already available');
+      
+      // Ensure _dbOperations exists (check if it's a List and preserve existing operations)
+      try {
+        final existingOps = interpreter.fetch('_dbOperations');
+        if (existingOps is List) {
+          debugPrint('[ActionHandler] _dbOperations already exists with ${existingOps.length} operations');
+        } else {
+          debugPrint('[ActionHandler] _dbOperations exists but is not a List (type: ${existingOps.runtimeType}), reinitializing...');
+          interpreter.eval('_dbOperations = []');
+        }
+      } catch (e) {
+        // _dbOperations doesn't exist, initialize it without clearing existing functions
+        debugPrint('[ActionHandler] _dbOperations not found, initializing...');
+        interpreter.eval('var _dbOperations = []');
+        debugPrint('[ActionHandler] _dbOperations initialized');
+      }
+      
+      // Ensure _dbResults exists
+      try {
+        interpreter.fetch('_dbResults');
+      } catch (_) {
+        debugPrint('[ActionHandler] _dbResults not found, initializing...');
+        interpreter.eval('var _dbResults = {}');
+      }
+      
+      // Ensure _dbOperationId exists
+      try {
+        interpreter.fetch('_dbOperationId');
+      } catch (_) {
+        debugPrint('[ActionHandler] _dbOperationId not found, initializing...');
+        interpreter.eval('var _dbOperationId = 0');
+      }
+    } catch (e) {
+      // Database functions don't exist, initialize them
+      debugPrint('[ActionHandler] Database functions not found, initializing...');
+      
+      // Check and initialize variables if needed
+      try {
+        interpreter.fetch('_dbOperations');
+      } catch (_) {
+        interpreter.eval('var _dbOperations = []');
+      }
+      
+      try {
+        interpreter.fetch('_dbResults');
+      } catch (_) {
+        interpreter.eval('var _dbResults = {}');
+      }
+      
+      try {
+        interpreter.fetch('_dbOperationId');
+      } catch (_) {
+        interpreter.eval('var _dbOperationId = 0');
+      }
+      
+      // Define database functions
+      interpreter.eval('''
+        fun save(entityName, data) {
+          final opId = _dbOperationId++
+          final operation = {
+            type: 'save',
+            id: opId,
+            entityName: entityName,
+            data: data,
+          }
+          _dbOperations.add(operation)
+          return opId
+        }
+        
+        fun findById(entityName, id) {
+          final opId = _dbOperationId++
+          final operation = {
+            type: 'findById',
+            id: opId,
+            entityName: entityName,
+            id: id,
+          }
+          _dbOperations.add(operation)
+          return opId
+        }
+        
+        fun findAll(entityName, where, orderBy, limit) {
+          final opId = _dbOperationId++
+          final operation = {
+            type: 'findAll',
+            id: opId,
+            entityName: entityName,
+            where: where ?? {},
+            orderBy: orderBy,
+            limit: limit,
+          }
+          _dbOperations.add(operation)
+          return opId
+        }
+        
+        fun getDbResult(opId) {
+          return _dbResults[opId]
+        }
+      ''');
+      debugPrint('[ActionHandler] Database functions initialized');
+    }
+  }
+
   /// Process database operations queued by Hetu scripts
   Future<void> _processDatabaseOperations() async {
     if (databaseAPI == null) {
+      debugPrint('[ActionHandler] No databaseAPI available, skipping database operations');
       return;
     }
 
     try {
-      // Check if database functions are registered, initialize if not
-      try {
-        interpreter.fetch('save');
-      } catch (e) {
-        // Database functions not registered, initialize them
-        debugPrint('[ActionHandler] Database functions not found, initializing...');
-        interpreter.eval('''
-          var _dbOperations = []
-          var _dbResults = {}
-          var _dbOperationId = 0
-          
-          fun save(entityName, data) {
-            final opId = _dbOperationId++
-            final operation = {
-              type: 'save',
-              id: opId,
-              entityName: entityName,
-              data: data,
-            }
-            _dbOperations.add(operation)
-            return opId
-          }
-          
-          fun findById(entityName, id) {
-            final opId = _dbOperationId++
-            final operation = {
-              type: 'findById',
-              id: opId,
-              entityName: entityName,
-              id: id,
-            }
-            _dbOperations.add(operation)
-            return opId
-          }
-          
-          fun findAll(entityName, where, orderBy, limit) {
-            final opId = _dbOperationId++
-            final operation = {
-              type: 'findAll',
-              id: opId,
-              entityName: entityName,
-              where: where ?? {},
-              orderBy: orderBy,
-              limit: limit,
-            }
-            _dbOperations.add(operation)
-            return opId
-          }
-        ''');
-        debugPrint('[ActionHandler] Database functions initialized');
-      }
+      debugPrint('[ActionHandler] Starting to process database operations...');
       
-      // Check if _dbOperations exists, initialize if not
+      // Database functions should already be available (ensured before action invocation)
+      // Just fetch the operations queue
       dynamic operationsValue;
       try {
         operationsValue = interpreter.fetch('_dbOperations');
+        debugPrint('[ActionHandler] Found _dbOperations, type: ${operationsValue.runtimeType}, length: ${operationsValue is List ? (operationsValue as List).length : 'N/A'}');
       } catch (e) {
-        // _dbOperations doesn't exist, initialize it
-        debugPrint('[ActionHandler] _dbOperations not found, initializing...');
-        interpreter.eval('var _dbOperations = []');
-        operationsValue = interpreter.fetch('_dbOperations');
+        debugPrint('[ActionHandler] ERROR: _dbOperations not found even though functions should exist: $e');
+        debugPrint('[ActionHandler] This should not happen - database functions were ensured before action invocation');
+        return;
       }
       
       if (operationsValue is List && (operationsValue as List).isNotEmpty) {
@@ -516,9 +605,12 @@ class ActionHandler {
         interpreter.eval('_dbOperations = []');
         
         debugPrint('[ActionHandler] Database operations processed successfully');
+      } else {
+        debugPrint('[ActionHandler] No database operations to process (operationsValue is ${operationsValue.runtimeType}, isEmpty: ${operationsValue is List ? (operationsValue as List).isEmpty : 'N/A'})');
       }
-    } catch (e) {
-      debugPrint('[ActionHandler] Warning: Could not process database operations: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[ActionHandler] ERROR: Could not process database operations: $e');
+      debugPrint('[ActionHandler] Stack trace: $stackTrace');
     }
   }
 

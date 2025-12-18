@@ -102,7 +102,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     } else {
       debugPrint('[ContainerAppShell] Server URL found: $serverUrl');
       _fetcher = AssetFetcher(serverUrl: serverUrl);
-      _initializeApp();
+      _initializeApp(forceRefresh: true);
     }
   }
 
@@ -393,13 +393,24 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   }
   
   @override
+  void reassemble() {
+    super.reassemble();
+    // Hot reload detected - fetch fresh .ht files
+    debugPrint('[ContainerAppShell] Hot reload detected - fetching fresh .ht files');
+    if (_fetcher != null && !_waitingForServerUrl) {
+      // Only reload if we have a fetcher and app is initialized
+      _initializeApp(forceRefresh: true);
+    }
+  }
+
+  @override
   void dispose() {
     // Flush remaining logs before disposing
     DebugLogger.instance.flush();
     super.dispose();
   }
 
-  Future<void> _initializeApp() async {
+  Future<void> _initializeApp({bool forceRefresh = false}) async {
     try {
       debugPrint('[ContainerAppShell] Starting app initialization');
       setState(() {
@@ -419,7 +430,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       }
 
       // Fetch assets
-      debugPrint('[ContainerAppShell] Fetching assets');
+      debugPrint('[ContainerAppShell] Fetching assets${forceRefresh ? " (force refresh)" : ""}');
       setState(() {
         _currentStep = LoadingStep.fetchingAssets;
       });
@@ -428,7 +439,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         if (_fetcher == null) {
           throw Exception('AssetFetcher not initialized - server URL required');
         }
-        assets = await _fetcher!.fetchAllAssets();
+        assets = await _fetcher!.fetchAllAssets(forceRefresh: forceRefresh);
         debugPrint('[ContainerAppShell] Fetched ${assets.length} assets: ${assets.keys.join(", ")}');
       } catch (e, stackTrace) {
         final errorMsg = 'Failed to fetch assets: $e';
@@ -475,11 +486,11 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         _currentStep = LoadingStep.initializingDatabase;
       });
       try {
-        final database = VlinderDatabase();
+        // Reuse existing database instance (created in initState)
         for (final schema in schemas.values) {
           debugPrint('[ContainerAppShell] Creating table for schema: ${schema.name}');
           try {
-            await database.createTableFromSchema(schema);
+            await _database.createTableFromSchema(schema);
           } catch (e, stackTrace) {
             final errorMsg = 'Failed to create table for schema "${schema.name}": $e';
             debugPrint('[ContainerAppShell] ERROR: $errorMsg');
