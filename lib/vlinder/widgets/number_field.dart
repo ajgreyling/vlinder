@@ -9,12 +9,14 @@ import '../binding/drift_binding.dart';
 /// - required: bool? - Whether the field is required
 /// - placeholder: String? - Placeholder text
 /// - type: String? - Number type ('integer' or 'decimal', default 'decimal')
+/// - readOnly: bool? - Whether the field is read-only
 class VlinderNumberField extends StatefulWidget {
   final String field;
   final String? label;
   final bool? required;
   final String? placeholder;
   final String? type; // 'integer' or 'decimal'
+  final bool? readOnly;
 
   const VlinderNumberField({
     super.key,
@@ -23,6 +25,7 @@ class VlinderNumberField extends StatefulWidget {
     this.required,
     this.placeholder,
     this.type,
+    this.readOnly,
   });
 
   @override
@@ -110,11 +113,14 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     final error = formState?.getError(widget.field);
     final isRequired = widget.required ?? false;
     final isInteger = widget.type == 'integer';
+    final isReadOnly = widget.readOnly ?? false;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextField(
         controller: _controller,
+        readOnly: isReadOnly,
+        enabled: !isReadOnly,
         keyboardType: isInteger
             ? TextInputType.number
             : const TextInputType.numberWithOptions(decimal: true),
@@ -133,7 +139,7 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
                 )
               : null,
         ),
-        onChanged: _onChanged,
+        onChanged: isReadOnly ? null : _onChanged,
       ),
     );
   }
@@ -149,6 +155,7 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     final required = properties['required'] as bool?;
     final placeholder = properties['placeholder'] as String?;
     final type = properties['type'] as String?;
+    final readOnly = properties['readOnly'] as bool?;
 
     return VlinderNumberField(
       field: field,
@@ -156,6 +163,7 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
       required: required,
       placeholder: placeholder,
       type: type,
+      readOnly: readOnly,
     );
   }
 }

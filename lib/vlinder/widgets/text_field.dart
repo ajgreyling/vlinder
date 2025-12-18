@@ -8,11 +8,13 @@ import '../binding/drift_binding.dart';
 /// - label: String? - Label text for the field
 /// - required: bool? - Whether the field is required
 /// - placeholder: String? - Placeholder text
+/// - readOnly: bool? - Whether the field is read-only
 class VlinderTextField extends StatefulWidget {
   final String field;
   final String? label;
   final bool? required;
   final String? placeholder;
+  final bool? readOnly;
 
   const VlinderTextField({
     super.key,
@@ -20,6 +22,7 @@ class VlinderTextField extends StatefulWidget {
     this.label,
     this.required,
     this.placeholder,
+    this.readOnly,
   });
 
   @override
@@ -90,10 +93,14 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
     final error = formState?.getError(widget.field);
     final isRequired = widget.required ?? false;
 
+    final isReadOnly = widget.readOnly ?? false;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextField(
         controller: _controller,
+        readOnly: isReadOnly,
+        enabled: !isReadOnly,
         decoration: InputDecoration(
           labelText: widget.label ?? widget.field,
           hintText: widget.placeholder,
@@ -109,7 +116,7 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
                 )
               : null,
         ),
-        onChanged: _onChanged,
+        onChanged: isReadOnly ? null : _onChanged,
       ),
     );
   }
@@ -124,12 +131,14 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
     final label = properties['label'] as String?;
     final required = properties['required'] as bool?;
     final placeholder = properties['placeholder'] as String?;
+    final readOnly = properties['readOnly'] as bool?;
 
     return VlinderTextField(
       field: field,
       label: label,
       required: required,
       placeholder: placeholder,
+      readOnly: readOnly,
     );
   }
 }

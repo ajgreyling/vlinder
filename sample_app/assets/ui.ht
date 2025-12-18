@@ -4,7 +4,7 @@
 // Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
 logInfo("Building customer registration form UI")
 
-final screen = Screen(
+final registrationScreen = Screen(
   id: 'customer_registration',
   title: 'Customer Registration',
   children: [
@@ -54,6 +54,76 @@ final screen = Screen(
     ),
   ],
 );
+
+// Saved Customer View Screen - displays saved customer data from database
+final savedCustomerScreen = Screen(
+  id: 'saved_customer_view',
+  title: 'Saved Customer Details',
+  children: [
+    Text(
+      text: 'Customer Successfully Saved',
+      style: 'headline',
+      align: 'center',
+      padding: 24.0,
+    ),
+    Text(
+      text: 'The following customer data was retrieved from the database:',
+      style: 'body',
+      align: 'center',
+      padding: 16.0,
+    ),
+    Form(
+      entity: 'Customer',
+      fields: [
+        TextField(
+          field: 'id',
+          label: 'Customer ID',
+          readOnly: true,
+          placeholder: 'Auto-generated ID',
+        ),
+        TextField(
+          field: 'name',
+          label: 'Full Name',
+          readOnly: true,
+          placeholder: 'Name from database',
+        ),
+        TextField(
+          field: 'email',
+          label: 'Email Address',
+          readOnly: true,
+          placeholder: 'Email from database',
+        ),
+        NumberField(
+          field: 'age',
+          label: 'Age',
+          type: 'integer',
+          readOnly: true,
+          placeholder: 'Age from database',
+        ),
+        TextField(
+          field: 'phone',
+          label: 'Phone Number',
+          readOnly: true,
+          placeholder: 'Phone from database',
+        ),
+        TextField(
+          field: 'createdAt',
+          label: 'Created At',
+          readOnly: true,
+          placeholder: 'Creation timestamp',
+        ),
+      ],
+    ),
+    ActionButton(
+      label: 'Back to Registration',
+      action: 'navigate_registration',
+      style: 'secondary',
+    ),
+  ],
+);
+
+// Use registration screen as the default screen
+final screen = registrationScreen
 
 log("Customer registration screen built successfully")
 logInfo("UI definition complete")

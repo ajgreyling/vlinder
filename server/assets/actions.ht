@@ -4,6 +4,10 @@
 // Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
 logInfo("Loading action definitions")
 
+// Global variable to store the query operation ID for the saved customer
+// This will be used by the saved customer screen to load data from the database
+var _savedCustomerQueryId = null
+
 // Submit customer action - saves form data to database using database API
 fun submit_customer() {
   logInfo("submit_customer action called")
@@ -27,9 +31,47 @@ fun submit_customer() {
   
   logInfo("Customer save operation queued with ID: ${saveOpId}")
   
-  // Note: The database operation will be processed by ActionHandler
-  // after this function completes. Results will be available via getDbResult(saveOpId)
-  // in subsequent actions or function calls.
+  // Queue a query to get the latest customer (ordered by id desc, limit 1)
+  // This ensures we get the customer that was just saved (with the generated ID)
+  // Note: We use 'id DESC' as orderBy to get the latest customer by ID in descending order
+  final queryOpId = findAll('Customer', {}, 'id DESC', 1)
+  
+  logInfo("Customer query operation queued with ID: ${queryOpId}")
+  
+  // Store the query operation ID so the saved customer screen can retrieve the result
+  // The saved customer screen will call getDbResult(queryOpId) after operations are processed
+  _savedCustomerQueryId = queryOpId
+  
+  logInfo("Saved customer query operation ID: ${queryOpId}")
+  logInfo("After save completes, use getDbResult(${queryOpId}) to get the saved customer from database")
+  
+  // Note: The database operations will be processed by ActionHandler
+  // after this function completes. Results will be available via getDbResult(saveOpId) 
+  // and getDbResult(queryOpId) in subsequent actions or function calls.
+}
+
+// Load saved customer action - loads the saved customer data into a form
+// This is called by the saved customer screen to populate the read-only form
+fun load_saved_customer() {
+  logInfo("load_saved_customer action called")
+  
+  if (_savedCustomerQueryId == null) {
+    logError("No saved customer query ID available")
+    return
+  }
+  
+  // Get the query result (this should be available after the operations were processed)
+  final queryResult = getDbResult(_savedCustomerQueryId)
+  
+  if (queryResult == null) {
+    logError("Query result not available yet")
+    return
+  }
+  
+  logInfo("Loaded saved customer from database: ${queryResult}")
+  
+  // Return the customer data so it can be used to populate the form
+  return queryResult
 }
 
 // Example: Find customer by ID action
@@ -58,5 +100,5 @@ fun list_customers(where, orderBy, limit) {
 }
 
 log("Action definitions loaded successfully")
-logInfo("Actions available: submit_customer, find_customer, list_customers")
+logInfo("Actions available: submit_customer, find_customer, list_customers, navigate_customer_view")
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
 import '../binding/drift_binding.dart';
 import '../drift/database_api.dart';
+import '../widgets/text_field.dart';
+import '../widgets/number_field.dart';
 
 /// Handler for executing Hetu script actions
 /// Supports navigation, form submission, and workflow transitions
@@ -82,6 +84,33 @@ class ActionHandler {
         // Process any database operations queued by the action
         if (databaseAPI != null) {
           await _processDatabaseOperations();
+          
+          // After processing database operations, check if we need to navigate to saved customer screen
+          // This happens when submit_customer action completes and we have a saved customer query ID
+          try {
+            final savedCustomerQueryId = interpreter.fetch('_savedCustomerQueryId');
+            if (savedCustomerQueryId != null) {
+              debugPrint('[ActionHandler] Found saved customer query ID: $savedCustomerQueryId');
+              // Get the query result using getDbResult function
+              try {
+                final queryResult = interpreter.invoke('getDbResult', positionalArgs: [savedCustomerQueryId]);
+                if (queryResult != null) {
+                  debugPrint('[ActionHandler] Loaded saved customer from database: $queryResult');
+                  debugPrint('[ActionHandler] Navigating to saved customer view screen');
+                  _navigateToSavedCustomerScreen(queryResult);
+                  // Clear the query ID so we don't navigate again
+                  interpreter.eval('_savedCustomerQueryId = null');
+                } else {
+                  debugPrint('[ActionHandler] Query result is null for operation ID: $savedCustomerQueryId');
+                }
+              } catch (e) {
+                debugPrint('[ActionHandler] Error getting query result: $e');
+              }
+            }
+          } catch (e) {
+            // No saved customer query ID or error getting result - ignore
+            debugPrint('[ActionHandler] No saved customer to navigate to: $e');
+          }
         }
         
         return;
@@ -207,6 +236,45 @@ class ActionHandler {
       debugPrint('Navigate to screen: $screenId');
       onNavigation?.call();
     }
+  }
+
+  /// Navigate to saved customer screen with customer data from database
+  void _navigateToSavedCustomerScreen(dynamic customerData) {
+    if (context == null || !context!.mounted) {
+      return;
+    }
+
+    debugPrint('[ActionHandler] Navigating to saved customer screen with data: $customerData');
+
+    // Import required widgets
+    final screenWidget = _buildSavedCustomerScreen(customerData);
+
+    Navigator.of(context!).push(
+      MaterialPageRoute(
+        builder: (context) => screenWidget,
+      ),
+    );
+  }
+
+  /// Build saved customer screen widget with read-only form fields
+  Widget _buildSavedCustomerScreen(dynamic customerData) {
+    // Convert customer data to Map if it's not already
+    Map<String, dynamic> customerMap;
+    if (customerData is Map) {
+      customerMap = Map<String, dynamic>.from(customerData);
+    } else {
+      // If it's a list (from findAll), get the first item
+      if (customerData is List && customerData.isNotEmpty) {
+        customerMap = Map<String, dynamic>.from(customerData[0] as Map);
+      } else {
+        customerMap = {};
+      }
+    }
+
+    debugPrint('[ActionHandler] Building saved customer screen with data: $customerMap');
+
+    // Import required widgets
+    return _SavedCustomerScreen(customerData: customerMap);
   }
 
   /// Submit form
@@ -493,6 +561,108 @@ class ActionHandler {
       return '{$entries}';
     }
     return '"${value.toString().replaceAll('"', '\\"')}"';
+  }
+}
+
+/// Saved Customer Screen - displays saved customer data in read-only form
+class _SavedCustomerScreen extends StatelessWidget {
+  final Map<String, dynamic> customerData;
+
+  const _SavedCustomerScreen({required this.customerData});
+
+  @override
+  Widget build(BuildContext context) {
+    // Create a schema for the form
+    final schema = EntitySchema(
+      name: 'Customer',
+      fields: {},
+    );
+    
+    // Create form state with the customer data pre-populated
+    final formState = FormStateManager(schema: schema);
+    
+    // Populate form state with customer data
+    customerData.forEach((key, value) {
+      formState.setValue(key, value);
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Saved Customer Details'),
+      ),
+      body: FormStateProvider(
+        formState: formState,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Text(
+                'Customer Successfully Saved',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'The following customer data was retrieved from the database:',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            if (customerData.containsKey('id'))
+              VlinderTextField(
+                field: 'id',
+                label: 'Customer ID',
+                readOnly: true,
+              ),
+            if (customerData.containsKey('name'))
+              VlinderTextField(
+                field: 'name',
+                label: 'Full Name',
+                readOnly: true,
+              ),
+            if (customerData.containsKey('email'))
+              VlinderTextField(
+                field: 'email',
+                label: 'Email Address',
+                readOnly: true,
+              ),
+            if (customerData.containsKey('age'))
+              VlinderNumberField(
+                field: 'age',
+                label: 'Age',
+                type: 'integer',
+                readOnly: true,
+              ),
+            if (customerData.containsKey('phone'))
+              VlinderTextField(
+                field: 'phone',
+                label: 'Phone Number',
+                readOnly: true,
+              ),
+            if (customerData.containsKey('createdAt'))
+              VlinderTextField(
+                field: 'createdAt',
+                label: 'Created At',
+                readOnly: true,
+              ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('Back to Registration'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

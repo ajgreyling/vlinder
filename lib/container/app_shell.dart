@@ -58,29 +58,35 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     // Check app version and clear stored data if version changed
     // This ensures users scan a fresh QR code when a new app version is deployed
     ContainerConfig.checkAndClearOnVersionChange().then((_) {
-      // Register logging functions in the interpreter
-      // This allows .ht files to use log(), logInfo(), logWarning(), logError()
-      _registerLoggingFunctions();
-      
-      // Register database functions in the interpreter
-      // This allows .ht files to use executeSQL(), query(), save(), etc.
-      _registerDatabaseFunctions();
-      
-      // Create runtime with shared interpreter
-      // This ensures UI scripts can access schemas, workflows, and rules
-      _runtime = VlinderRuntime(interpreter: _interpreter);
-      
-      // Enable remote debug logging if configured
-      // Pass log server URL explicitly from config
-      final logServerUrl = ContainerConfig.debugLogServerUrl;
-      if (logServerUrl != null && logServerUrl.isNotEmpty) {
-        debugPrint('[ContainerAppShell] Enabling debug logging to: $logServerUrl');
-        DebugLogger.instance.enable(logServerUrl: logServerUrl);
-      } else {
-        debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
-      }
-      
-      _checkServerUrl();
+      // Clear stored server URL on every app startup to force QR code scan
+      // This ensures users always scan a QR code when the app opens
+      ContainerConfig.clearServerUrl().then((_) {
+        debugPrint('[ContainerAppShell] Cleared stored server URL - QR code scan required');
+        
+        // Register logging functions in the interpreter
+        // This allows .ht files to use log(), logInfo(), logWarning(), logError()
+        _registerLoggingFunctions();
+        
+        // Register database functions in the interpreter
+        // This allows .ht files to use executeSQL(), query(), save(), etc.
+        _registerDatabaseFunctions();
+        
+        // Create runtime with shared interpreter
+        // This ensures UI scripts can access schemas, workflows, and rules
+        _runtime = VlinderRuntime(interpreter: _interpreter);
+        
+        // Enable remote debug logging if configured
+        // Pass log server URL explicitly from config
+        final logServerUrl = ContainerConfig.debugLogServerUrl;
+        if (logServerUrl != null && logServerUrl.isNotEmpty) {
+          debugPrint('[ContainerAppShell] Enabling debug logging to: $logServerUrl');
+          DebugLogger.instance.enable(logServerUrl: logServerUrl);
+        } else {
+          debugPrint('[ContainerAppShell] Debug logging disabled (no VLINDER_LOG_SERVER_URL configured)');
+        }
+        
+        _checkServerUrl();
+      });
     });
   }
 
