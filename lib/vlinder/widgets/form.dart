@@ -43,6 +43,14 @@ class VlinderForm extends StatelessWidget {
     List<Widget>? children,
   ) {
     final entity = properties['entity'] as String? ?? 'Entity';
+    final childrenList = children ?? [];
+    
+    debugPrint('[VlinderForm] fromProperties: entity=$entity, childrenCount=${childrenList.length}');
+    if (childrenList.isEmpty) {
+      debugPrint('[VlinderForm] WARNING: Form has no children!');
+    } else {
+      debugPrint('[VlinderForm] Children types: ${childrenList.map((c) => c.runtimeType).join(", ")}');
+    }
     
     // In a real implementation, you'd load the schema from schema.ht
     // For now, create a basic schema
@@ -55,7 +63,7 @@ class VlinderForm extends StatelessWidget {
 
     return VlinderForm(
       entity: entity,
-      children: children ?? [],
+      children: childrenList,
       formState: formState,
     );
   }

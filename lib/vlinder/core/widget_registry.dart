@@ -21,6 +21,7 @@ class WidgetRegistry {
   /// Register a widget builder
   void register(String widgetName, WidgetBuilder builder) {
     _builders[widgetName] = builder;
+    debugPrint('[WidgetRegistry] Registered widget: "$widgetName"');
   }
 
   /// Check if a widget is registered
@@ -50,14 +51,31 @@ class WidgetRegistry {
     Map<String, dynamic> properties,
     List<Widget>? children,
   ) {
+    debugPrint('[WidgetRegistry] buildWidget: Requesting widget "$widgetName"');
+    debugPrint('[WidgetRegistry] buildWidget: Properties: ${properties.keys.join(", ")}');
+    debugPrint('[WidgetRegistry] buildWidget: Children count: ${children?.length ?? 0}');
+    debugPrint('[WidgetRegistry] buildWidget: Registered widgets: ${_builders.keys.join(", ")}');
+    
     final builder = _builders[widgetName];
     if (builder == null) {
+      debugPrint('[WidgetRegistry] ERROR: Widget "$widgetName" is not registered!');
+      debugPrint('[WidgetRegistry] Available widgets: ${_builders.keys.join(", ")}');
       throw ArgumentError(
         'Widget "$widgetName" is not registered. '
         'Available widgets: ${_builders.keys.join(", ")}',
       );
     }
-    return builder(context, properties, children);
+    
+    debugPrint('[WidgetRegistry] buildWidget: Found builder for "$widgetName", calling builder...');
+    try {
+      final widget = builder(context, properties, children);
+      debugPrint('[WidgetRegistry] buildWidget: Successfully built widget "$widgetName": ${widget.runtimeType}');
+      return widget;
+    } catch (e, stackTrace) {
+      debugPrint('[WidgetRegistry] ERROR: Failed to build widget "$widgetName": $e');
+      debugPrint('[WidgetRegistry] Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   /// Convert Hetu HTValue to Dart Map

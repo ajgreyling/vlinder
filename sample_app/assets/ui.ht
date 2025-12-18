@@ -5,6 +5,12 @@ final screen = Screen(
   id: 'customer_registration',
   title: 'Customer Registration',
   children: [
+    Text(
+      text: 'Customer Registration Sample App',
+      style: 'headline',
+      align: 'center',
+      padding: 24.0,
+    ),
     Form(
       entity: 'Customer',
       fields: [

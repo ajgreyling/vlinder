@@ -29,18 +29,29 @@ class VlinderRuntime {
 
   /// Register all SDK widgets with the registry
   void _registerWidgets() {
+    debugPrint('[VlinderRuntime] Registering widgets...');
     // App & Navigation
     registry.register('Screen', VlinderScreen.fromProperties);
+    debugPrint('[VlinderRuntime] Registered: Screen');
 
     // Form Containers
     registry.register('Form', VlinderForm.fromProperties);
+    debugPrint('[VlinderRuntime] Registered: Form');
 
     // Input Fields - using wrapper functions to work around static method access issue
     registry.register('TextField', _buildTextField);
+    debugPrint('[VlinderRuntime] Registered: TextField');
     registry.register('NumberField', _buildNumberField);
+    debugPrint('[VlinderRuntime] Registered: NumberField');
 
     // Actions & Feedback
     registry.register('ActionButton', VlinderActionButton.fromProperties);
+    debugPrint('[VlinderRuntime] Registered: ActionButton');
+
+    // Display widgets
+    registry.register('Text', _buildText);
+    debugPrint('[VlinderRuntime] Registered: Text');
+    debugPrint('[VlinderRuntime] Widget registration complete. Total widgets: ${registry.getRegisteredWidgets().length}');
   }
 
   /// Build TextField widget from properties
@@ -83,16 +94,61 @@ class VlinderRuntime {
     );
   }
 
+  /// Build Text widget from properties
+  static Widget _buildText(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final text = properties['text'] as String? ?? properties['value'] as String? ?? '';
+    final style = properties['style'] as String?;
+    debugPrint('[VlinderRuntime] Building Text widget: text="$text", style=$style');
+    
+    TextStyle? textStyle;
+    if (style == 'headline') {
+      textStyle = Theme.of(context).textTheme.headlineMedium;
+    } else if (style == 'title') {
+      textStyle = Theme.of(context).textTheme.titleLarge;
+    } else if (style == 'body') {
+      textStyle = Theme.of(context).textTheme.bodyLarge;
+    } else if (style == 'caption') {
+      textStyle = Theme.of(context).textTheme.bodySmall;
+    }
+
+    return Padding(
+      padding: EdgeInsets.all(properties['padding'] as double? ?? 16.0),
+      child: Text(
+        text,
+        style: textStyle,
+        textAlign: properties['align'] == 'center' 
+            ? TextAlign.center 
+            : properties['align'] == 'right'
+                ? TextAlign.right
+                : TextAlign.left,
+      ),
+    );
+  }
+
   /// Load and parse a ui.ht file
   /// Returns a widget tree that can be displayed
   Widget loadUI(String scriptContent, BuildContext context) {
     try {
+      debugPrint('[VlinderRuntime] loadUI called with script length: ${scriptContent.length}');
+      debugPrint('[VlinderRuntime] Script preview (first 200 chars): ${scriptContent.substring(0, scriptContent.length > 200 ? 200 : scriptContent.length)}...');
+      
       // Parse the Hetu script
+      debugPrint('[VlinderRuntime] Parsing UI script...');
       final parsedWidget = parser.parse(scriptContent);
+      debugPrint('[VlinderRuntime] Parse successful: widgetName=${parsedWidget.widgetName}, properties=${parsedWidget.properties.keys.join(", ")}, childrenCount=${parsedWidget.children.length}');
 
       // Build Flutter widget tree
-      return parser.buildWidgetTree(context, parsedWidget);
-    } catch (e) {
+      debugPrint('[VlinderRuntime] Building widget tree...');
+      final widget = parser.buildWidgetTree(context, parsedWidget);
+      debugPrint('[VlinderRuntime] Widget tree built successfully: ${widget.runtimeType}');
+      return widget;
+    } catch (e, stackTrace) {
+      debugPrint('[VlinderRuntime] Error in loadUI: $e');
+      debugPrint('[VlinderRuntime] Stack trace: $stackTrace');
       return _buildErrorWidget('Failed to load UI: $e');
     }
   }

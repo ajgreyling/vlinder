@@ -326,6 +326,20 @@ final result = hetu.invoke('functionName', positionalArgs: [1, 2]); // NOT call(
 - Only `HTStruct` exists as a wrapper type (import from `package:hetu_script/values.dart`)
 - Access HTStruct values: `struct[key]` or iterate with `for (final key in struct.keys)`
 
+**Preventing Function Redefinition:**
+When creating parsers that define Hetu functions, always check if they exist first:
+```dart
+void _initializeConstructors() {
+  try {
+    interpreter.fetch('defineSchema'); // Check if function exists
+    return; // Already defined, skip
+  } catch (_) {
+    // Function doesn't exist, define it
+  }
+  interpreter.eval(constructorScript);
+}
+```
+
 See [HETU_API_ANALYSIS.md](HETU_API_ANALYSIS.md) for complete API documentation.
 
 ### Testing & Validation
@@ -388,6 +402,26 @@ All parsers:
 - Use `interpreter.fetch()` to get variables after `eval()`
 - Iterate HTStruct using `for (final key in struct.keys)`
 - Return Dart native types, not Hetu wrapper types
+- **Check for existing functions before defining them** to prevent "already defined" errors
+- Define constructor functions once in the constructor, not in `load*()` methods
+
+### Database Integration
+
+Vlinder uses **Drift** for SQLite ORM and **sqlite3** for custom SQL execution:
+
+- **Drift** (`LazyDatabase`, `NativeDatabase`) - For ORM operations and table definitions
+- **sqlite3** - For runtime custom SQL execution (CREATE TABLE, etc.)
+- Custom SQL execution uses `sqlite3.open()` directly, not `NativeDatabase.executor`
+- Add `sqlite3: ^2.4.0` to dependencies for custom SQL support
+
+### Debug Logging
+
+Vlinder includes comprehensive debug logging throughout:
+
+- Use `debugPrint()` with component prefixes: `[ComponentName] Message`
+- Examples: `[VlinderDatabase]`, `[ContainerAppShell]`, `[UIParser]`, `[SchemaLoader]`
+- Logs include initialization steps, SQL execution, schema loading, and error details
+- All logs are prefixed for easy filtering in Flutter console
 
 ### Runtime Engine
 
@@ -396,5 +430,6 @@ All parsers:
 - Registers SDK widgets with `WidgetRegistry`
 - Provides `loadUI()` to parse and build widget trees
 - Handles errors gracefully with fallback UI
+- Includes debug logging for troubleshooting
 
 ---

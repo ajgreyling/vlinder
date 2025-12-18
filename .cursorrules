@@ -95,6 +95,21 @@ final dartValue = WidgetRegistry.htValueToDart(hetuValue);
 - Parsers (UIParser, SchemaLoader, WorkflowParser, RulesParser) expect Hetu interpreter to be initialized
 - They use `interpreter.fetch()` to get variables after `eval()`
 - They iterate HTStruct using `for (final key in struct.keys)`
+- **CRITICAL**: Always check if constructor functions exist before defining them to prevent "already defined" errors
+- Example:
+```dart
+void _initializeConstructors() {
+  try {
+    interpreter.fetch('defineSchema'); // or 'Screen', 'defineRule', etc.
+    // Function already exists, skip definition
+    return;
+  } catch (_) {
+    // Function doesn't exist, proceed with definition
+  }
+  interpreter.eval(constructorScript);
+}
+```
+- Do NOT prepend constructor scripts in `load*()` methods - they're already defined in constructor
 
 ### Action Handler
 - Use `ActionHandler` for executing Hetu script actions
@@ -133,6 +148,65 @@ await handler.executeAction('actionName', params: {...});
 - Check required fields, type consistency, and cross-file references
 - Verify workflow step references and rule condition syntax
 
+## Drift Database Usage
+
+### Custom SQL Execution
+- **DO NOT** use `NativeDatabase.executor` or `LazyDatabase.connection` directly - these don't exist
+- Use `sqlite3` package directly for custom SQL execution:
+```dart
+import 'package:sqlite3/sqlite3.dart';
+
+Future<void> customStatement(String sql) async {
+  final db = sqlite3.open(dbFile.path);
+  db.execute(sql);
+  db.dispose();
+}
+```
+- Add `sqlite3: ^2.4.0` to `pubspec.yaml` dependencies
+- Cache the sqlite3 Database instance if executing multiple statements
+
+### Database Connection
+- `NativeDatabase` doesn't expose `connection` getter directly
+- For Drift operations, use `LazyDatabase` wrapper properly
+- For custom SQL, use sqlite3 directly
+
+## Debug Logging
+
+### Debug Output Patterns
+- Use `debugPrint()` with component prefixes for better log filtering
+- Prefix format: `[ComponentName] Message`
+- Examples:
+```dart
+debugPrint('[VlinderDatabase] Creating table from schema: ${schema.name}');
+debugPrint('[ContainerAppShell] Starting app initialization');
+debugPrint('[UIParser] Parsing UI script (${scriptContent.length} characters)');
+debugPrint('[SchemaLoader] Loaded ${schemas.length} schemas');
+```
+- Include error context: `debugPrint('[Component] Error: $e'); debugPrint('[Component] Stack trace: $stackTrace');`
+
+## Import Paths
+
+### When to Use Relative vs Package Imports
+- Use **relative imports** (`../vlinder/vlinder.dart`) when package isn't properly configured
+- Use **package imports** (`package:vlinder/vlinder.dart`) when package is properly set up
+- If you get "Target of URI doesn't exist" errors, switch to relative imports
+
+## Material Icons
+
+### Missing Icons
+- `Icons.asterisk` does NOT exist in Material Icons
+- Use Text widget with "*" character instead:
+```dart
+// WRONG
+Icon(Icons.asterisk, size: 12, color: Colors.red)
+
+// CORRECT
+Padding(
+  padding: EdgeInsets.all(8.0),
+  child: Text('*', style: TextStyle(color: Colors.red, fontSize: 16)),
+)
+```
+
 ## Best Practices
 
 1. **Always initialize Hetu** - Call `init()` immediately after creating Hetu instance
@@ -144,4 +218,7 @@ await handler.executeAction('actionName', params: {...});
 7. **Handle errors gracefully** - Wrap Hetu operations in try-catch blocks
 8. **Validate before deploy** - Run `test_and_validate.sh` before deploying .ht files
 9. **Test runtime behavior** - Use actual parsers in tests, not just syntax checking
+10. **Prevent function redefinition** - Always check if Hetu functions exist before defining them
+11. **Use debug logging** - Add comprehensive debug output with component prefixes
+12. **Use sqlite3 for custom SQL** - Don't try to access executor through NativeDatabase
 

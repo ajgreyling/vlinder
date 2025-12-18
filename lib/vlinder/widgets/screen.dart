@@ -20,6 +20,12 @@ class VlinderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[VlinderScreen] build() called: id=$id, title=$title, childrenCount=${children.length}');
+    
+    if (children.isEmpty) {
+      debugPrint('[VlinderScreen] WARNING: Screen has no children, will show empty ListView');
+    }
+    
     return Scaffold(
       appBar: title != null
           ? AppBar(
@@ -43,11 +49,19 @@ class VlinderScreen extends StatelessWidget {
   ) {
     final id = properties['id'] as String? ?? 'screen';
     final title = properties['title'] as String?;
+    final childrenList = children ?? [];
+    
+    debugPrint('[VlinderScreen] fromProperties: id=$id, title=$title, childrenCount=${childrenList.length}');
+    if (childrenList.isEmpty) {
+      debugPrint('[VlinderScreen] WARNING: Screen has no children!');
+    } else {
+      debugPrint('[VlinderScreen] Children types: ${childrenList.map((c) => c.runtimeType).join(", ")}');
+    }
 
     return VlinderScreen(
       id: id,
       title: title,
-      children: children ?? [],
+      children: childrenList,
     );
   }
 }
