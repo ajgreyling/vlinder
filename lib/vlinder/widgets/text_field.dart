@@ -90,7 +90,13 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
           border: const OutlineInputBorder(),
           errorText: error,
           suffixIcon: isRequired
-              ? const Icon(Icons.asterisk, size: 12, color: Colors.red)
+              ? const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text(
+                    '*',
+                    style: TextStyle(color: Colors.red, fontSize: 16),
+                  ),
+                )
               : null,
         ),
         onChanged: _onChanged,

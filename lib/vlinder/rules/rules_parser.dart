@@ -28,6 +28,15 @@ class RulesParser {
 
   /// Initialize rule constructor functions in Hetu
   void _initializeRuleConstructors() {
+    // Check if function is already defined to avoid redefinition errors
+    try {
+      interpreter.fetch('defineRule');
+      // Function already exists, skip definition
+      return;
+    } catch (_) {
+      // Function doesn't exist, proceed with definition
+    }
+
     final ruleScript = '''
       fun defineRule(id, name, condition, action, params) {
         final result = {
@@ -45,15 +54,15 @@ class RulesParser {
     try {
       interpreter.eval(ruleScript);
     } catch (e) {
-      // Ignore if already defined
+      // Ignore if already defined (shouldn't happen due to check above, but keep for safety)
     }
   }
 
   /// Load rules from rules.ht file content
   Map<String, Rule> loadRules(String scriptContent) {
     try {
-      final fullScript = _getRuleConstructorsScript() + '\n\n' + scriptContent;
-      interpreter.eval(fullScript);
+      // Rule constructors are already defined in constructor, just evaluate user script
+      interpreter.eval(scriptContent);
 
       final rules = <String, Rule>{};
 

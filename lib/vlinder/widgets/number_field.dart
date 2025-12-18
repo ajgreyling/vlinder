@@ -36,7 +36,6 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
   void initState() {
     super.initState();
     _controller = TextEditingController();
-    final isInteger = widget.type == 'integer';
     
     // Load initial value from form state if available
     final formState = FormStateProvider.of(context);
@@ -115,7 +114,13 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
           border: const OutlineInputBorder(),
           errorText: error,
           suffixIcon: isRequired
-              ? const Icon(Icons.asterisk, size: 12, color: Colors.red)
+              ? const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text(
+                    '*',
+                    style: TextStyle(color: Colors.red, fontSize: 16),
+                  ),
+                )
               : null,
         ),
         onChanged: _onChanged,

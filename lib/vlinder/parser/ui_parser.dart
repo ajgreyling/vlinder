@@ -33,6 +33,17 @@ class UIParser {
   /// Initialize widget constructor functions in Hetu
   /// These functions wrap widget creation and track widget types
   void _initializeWidgetConstructors() {
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      interpreter.fetch('Screen');
+      // Functions already exist, skip definition
+      debugPrint('[UIParser] Widget constructors already defined, skipping initialization');
+      return;
+    } catch (_) {
+      // Functions don't exist, proceed with definition
+      debugPrint('[UIParser] Initializing widget constructors');
+    }
+
     final widgetConstructors = '''
       fun Screen(id, title, children) {
         final result = {
@@ -90,8 +101,9 @@ class UIParser {
 
     try {
       interpreter.eval(widgetConstructors);
+      debugPrint('[UIParser] Widget constructors initialized successfully');
     } catch (e) {
-      debugPrint('Warning: Could not initialize widget constructors: $e');
+      debugPrint('[UIParser] Warning: Could not initialize widget constructors: $e');
     }
   }
 
@@ -109,11 +121,10 @@ class UIParser {
   /// ```
   ParsedWidget parse(String scriptContent) {
     try {
-      // Combine widget constructors with user script
-      final fullScript = _getWidgetConstructorsScript() + '\n\n' + scriptContent;
-      
-      // Load the script into Hetu interpreter
-      interpreter.eval(fullScript);
+      debugPrint('[UIParser] Parsing UI script (${scriptContent.length} characters)');
+      // Widget constructors are already defined in constructor, just evaluate user script
+      interpreter.eval(scriptContent);
+      debugPrint('[UIParser] UI script evaluated successfully');
 
       // Try to get the 'screen' variable (common root widget)
       dynamic screenValue;

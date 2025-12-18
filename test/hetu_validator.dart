@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hetu_script/hetu_script.dart';
-import 'package:hetu_script/values.dart';
 import 'package:vlinder/vlinder/schema/schema_loader.dart';
 import 'package:vlinder/vlinder/parser/ui_parser.dart';
 import 'package:vlinder/vlinder/workflow/workflow_parser.dart';

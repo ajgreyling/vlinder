@@ -1,5 +1,6 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
+import 'package:flutter/foundation.dart';
 import '../binding/drift_binding.dart';
 
 /// Loader for parsing schema.ht files and converting to EntitySchema objects
@@ -12,6 +13,15 @@ class SchemaLoader {
 
   /// Initialize schema constructor functions in Hetu
   void _initializeSchemaConstructors() {
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      interpreter.fetch('defineSchema');
+      // Function already exists, skip definition
+      return;
+    } catch (_) {
+      // Function doesn't exist, proceed with definition
+    }
+
     final schemaScript = '''
       fun defineSchema(name, primaryKey, fields) {
         final result = {
@@ -39,7 +49,8 @@ class SchemaLoader {
     try {
       interpreter.eval(schemaScript);
     } catch (e) {
-      // Ignore if already defined
+      // Ignore if already defined (shouldn't happen due to check above, but keep for safety)
+      debugPrint('Warning: Failed to initialize schema constructors: $e');
     }
   }
 
@@ -47,11 +58,8 @@ class SchemaLoader {
   /// Returns a map of entity names to EntitySchema objects
   Map<String, EntitySchema> loadSchemas(String scriptContent) {
     try {
-      // Combine schema constructors with user script
-      final fullScript = _getSchemaConstructorsScript() + '\n\n' + scriptContent;
-      
-      // Evaluate the script
-      interpreter.eval(fullScript);
+      // Schema constructors are already defined in constructor, just evaluate user script
+      interpreter.eval(scriptContent);
 
       // Extract schema definitions
       final schemas = <String, EntitySchema>{};

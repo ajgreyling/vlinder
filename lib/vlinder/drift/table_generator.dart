@@ -22,29 +22,15 @@ class TableGenerator {
   }
 
   /// Generate a column from a SchemaField
+  /// Note: This method is not fully implemented as Drift requires compile-time table definitions
   GeneratedColumn? _generateColumn(SchemaField field) {
-    switch (field.type) {
-      case 'text':
-      case 'string':
-        return TextColumn(field.name, length: _getMaxLength(field));
-      case 'integer':
-      case 'int':
-        return IntColumn(field.name);
-      case 'number':
-      case 'decimal':
-      case 'float':
-      case 'double':
-        return RealColumn(field.name);
-      case 'boolean':
-      case 'bool':
-        return BoolColumn(field.name);
-      case 'date':
-      case 'datetime':
-        return DateTimeColumn(field.name);
-      default:
-        // Default to text for unknown types
-        return TextColumn(field.name);
-    }
+    // Drift column classes are abstract and cannot be instantiated at runtime
+    // This method is a placeholder - actual implementation requires code generation
+    throw UnimplementedError(
+      'Column generation not fully implemented. '
+      'Drift requires compile-time table definitions. '
+      'Use RuntimeTableHelper.generateTableCode() for code generation.',
+    );
   }
 
   /// Get max length constraint from field

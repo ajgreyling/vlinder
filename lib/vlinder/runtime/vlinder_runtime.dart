@@ -35,12 +35,52 @@ class VlinderRuntime {
     // Form Containers
     registry.register('Form', VlinderForm.fromProperties);
 
-    // Input Fields
-    registry.register('TextField', VlinderTextField.fromProperties);
-    registry.register('NumberField', VlinderNumberField.fromProperties);
+    // Input Fields - using wrapper functions to work around static method access issue
+    registry.register('TextField', _buildTextField);
+    registry.register('NumberField', _buildNumberField);
 
     // Actions & Feedback
     registry.register('ActionButton', VlinderActionButton.fromProperties);
+  }
+
+  /// Build TextField widget from properties
+  static Widget _buildTextField(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final field = properties['field'] as String? ?? 'field';
+    final label = properties['label'] as String?;
+    final required = properties['required'] as bool?;
+    final placeholder = properties['placeholder'] as String?;
+
+    return VlinderTextField(
+      field: field,
+      label: label,
+      required: required,
+      placeholder: placeholder,
+    );
+  }
+
+  /// Build NumberField widget from properties
+  static Widget _buildNumberField(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final field = properties['field'] as String? ?? 'field';
+    final label = properties['label'] as String?;
+    final required = properties['required'] as bool?;
+    final placeholder = properties['placeholder'] as String?;
+    final type = properties['type'] as String?;
+
+    return VlinderNumberField(
+      field: field,
+      label: label,
+      required: required,
+      placeholder: placeholder,
+      type: type,
+    );
   }
 
   /// Load and parse a ui.ht file

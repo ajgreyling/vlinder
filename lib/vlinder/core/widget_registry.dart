@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 
 /// Type definition for a widget builder function

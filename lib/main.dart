@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:vlinder/vlinder.dart';
+import '../vlinder/vlinder.dart';
 import 'container/app_shell.dart';
 
 void main() {

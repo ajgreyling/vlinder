@@ -1,14 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hetu_script/hetu_script.dart';
 import '../vlinder/vlinder.dart';
-import '../vlinder/schema/schema_loader.dart';
-import '../vlinder/workflow/workflow_parser.dart';
-import '../vlinder/workflow/workflow_engine.dart';
-import '../vlinder/rules/rules_parser.dart';
-import '../vlinder/rules/rules_engine.dart';
-import '../vlinder/drift/database.dart';
 import 'asset_fetcher.dart';
-import 'config.dart';
 
 /// Container app shell - minimal Flutter app that fetches and renders .ht files
 class ContainerAppShell extends StatefulWidget {
@@ -38,61 +31,75 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
 
   Future<void> _initializeApp() async {
     try {
+      debugPrint('[ContainerAppShell] Starting app initialization');
       setState(() {
         _isLoading = true;
         _errorMessage = null;
       });
 
       // Check if we have cached assets (offline mode)
+      debugPrint('[ContainerAppShell] Checking for cached assets');
       final hasCache = await _fetcher.hasCachedAssets();
       if (hasCache) {
         _isOffline = true;
+        debugPrint('[ContainerAppShell] Using cached assets (offline mode)');
       }
 
       // Fetch assets
+      debugPrint('[ContainerAppShell] Fetching assets');
       final assets = await _fetcher.fetchAllAssets();
+      debugPrint('[ContainerAppShell] Fetched ${assets.length} assets: ${assets.keys.join(", ")}');
 
       // Load schemas
+      debugPrint('[ContainerAppShell] Loading schemas');
       final schemaLoader = SchemaLoader(interpreter: _interpreter);
       final schemas = schemaLoader.loadSchemas(assets['schema.ht'] ?? '');
+      debugPrint('[ContainerAppShell] Loaded ${schemas.length} schemas: ${schemas.keys.join(", ")}');
 
       // Initialize database with schemas
+      debugPrint('[ContainerAppShell] Initializing database');
       final database = VlinderDatabase();
       for (final schema in schemas.values) {
+        debugPrint('[ContainerAppShell] Creating table for schema: ${schema.name}');
         await database.createTableFromSchema(schema);
       }
+      debugPrint('[ContainerAppShell] Database initialization complete');
 
       // Load workflows
+      debugPrint('[ContainerAppShell] Loading workflows');
       final workflowParser = WorkflowParser(interpreter: _interpreter);
-      final workflows = workflowParser.loadWorkflows(assets['workflows.ht'] ?? '');
+      workflowParser.loadWorkflows(assets['workflows.ht'] ?? '');
+      debugPrint('[ContainerAppShell] Workflows loaded');
 
       // Load rules
+      debugPrint('[ContainerAppShell] Loading rules');
       final rulesParser = RulesParser(interpreter: _interpreter);
-      final rules = rulesParser.loadRules(assets['rules.ht'] ?? '');
+      rulesParser.loadRules(assets['rules.ht'] ?? '');
+      debugPrint('[ContainerAppShell] Rules loaded');
 
-      // Create workflow engine
-      final workflowEngine = WorkflowEngine(
-        interpreter: _interpreter,
-        workflows: workflows,
-      );
-
-      // Create rules engine
-      final rulesEngine = RulesEngine(
-        interpreter: _interpreter,
-        rules: rules,
-      );
+      // Note: WorkflowEngine and RulesEngine are created but not yet integrated
+      // They will be used when action handlers are implemented
+      // final workflows = workflowParser.loadWorkflows(assets['workflows.ht'] ?? '');
+      // final rules = rulesParser.loadRules(assets['rules.ht'] ?? '');
+      // final workflowEngine = WorkflowEngine(interpreter: _interpreter, workflows: workflows);
+      // final rulesEngine = RulesEngine(interpreter: _interpreter, rules: rules);
 
       // Load UI
+      debugPrint('[ContainerAppShell] Loading UI');
       final uiContent = assets['ui.ht'] ?? '';
       if (uiContent.isEmpty) {
         throw Exception('No UI content found');
       }
+      debugPrint('[ContainerAppShell] UI content length: ${uiContent.length} characters');
 
       setState(() {
         _loadedUI = _runtime.loadUI(uiContent, context);
         _isLoading = false;
       });
-    } catch (e) {
+      debugPrint('[ContainerAppShell] App initialization complete');
+    } catch (e, stackTrace) {
+      debugPrint('[ContainerAppShell] Error during initialization: $e');
+      debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;

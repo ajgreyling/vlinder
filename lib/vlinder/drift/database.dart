@@ -2,15 +2,18 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../binding/drift_binding.dart';
-import 'table_generator.dart';
 
 /// Vlinder database - SQLite database managed by Drift
 /// Tables are generated from schemas at runtime using raw SQL
 class VlinderDatabase {
   final LazyDatabase _db;
+  dynamic _cachedDb;
+  Database? _sqliteDb;
+  File? _dbFile;
 
   VlinderDatabase() : _db = _openConnection();
 
@@ -33,17 +36,66 @@ class VlinderDatabase {
     // 3. Or use raw SQL to create tables
   }
 
-  /// Get database connection
-  DatabaseConnection get connection => _db.connection;
+  /// Get the underlying database instance
+  Future<dynamic> _getDatabase() async {
+    if (_cachedDb == null) {
+      debugPrint('[VlinderDatabase] Creating new database instance');
+      final dbFolder = await getApplicationDocumentsDirectory();
+      _dbFile = File(p.join(dbFolder.path, 'vlinder.db'));
+      debugPrint('[VlinderDatabase] Database file: ${_dbFile!.path}');
+      _cachedDb = NativeDatabase(_dbFile!);
+    }
+    return _cachedDb!;
+  }
+
+  /// Get sqlite3 database instance for custom SQL execution
+  Future<Database> _getSqliteDatabase() async {
+    if (_sqliteDb == null) {
+      debugPrint('[VlinderDatabase] Opening sqlite3 database');
+      if (_dbFile == null) {
+        final dbFolder = await getApplicationDocumentsDirectory();
+        _dbFile = File(p.join(dbFolder.path, 'vlinder.db'));
+      }
+      _sqliteDb = sqlite3.open(_dbFile!.path);
+      debugPrint('[VlinderDatabase] Sqlite3 database opened');
+    }
+    return _sqliteDb!;
+  }
+
+  /// Get database connection (for Drift operations)
+  /// Note: Custom SQL execution uses sqlite3 directly
+  Future<DatabaseConnection> get connection async {
+    debugPrint('[VlinderDatabase] Getting database connection');
+    // For now, we use sqlite3 directly for custom SQL
+    // This getter is kept for compatibility but may not be fully functional
+    // If needed, we can implement it using LazyDatabase's connection mechanism
+    throw UnimplementedError(
+      'Connection getter not fully implemented. '
+      'Use customStatement() for SQL execution instead.',
+    );
+  }
 
   /// Execute custom SQL statement
   Future<void> customStatement(String sql) async {
-    final executor = _db.connection.executor;
-    await executor.runCustom(sql);
+    debugPrint('[VlinderDatabase] Executing SQL: $sql');
+    try {
+      // Use sqlite3 directly for custom SQL execution
+      final db = await _getSqliteDatabase();
+      db.execute(sql);
+      debugPrint('[VlinderDatabase] SQL executed successfully');
+    } catch (e) {
+      debugPrint('[VlinderDatabase] Error executing SQL: $e');
+      debugPrint('[VlinderDatabase] Error type: ${e.runtimeType}');
+      debugPrint('[VlinderDatabase] SQL was: $sql');
+      rethrow;
+    }
   }
 
   /// Create table from schema using raw SQL
   Future<void> createTableFromSchema(EntitySchema schema) async {
+    debugPrint('[VlinderDatabase] Creating table from schema: ${schema.name}');
+    debugPrint('[VlinderDatabase] Schema has ${schema.fields.length} fields');
+    
     final buffer = StringBuffer();
     buffer.write('CREATE TABLE IF NOT EXISTS ${schema.name.toLowerCase()} (');
     
@@ -57,17 +109,23 @@ class VlinderDatabase {
           : '';
       
       columns.add('${field.name} $sqlType $nullable $defaultValue');
+      debugPrint('[VlinderDatabase]   Field: ${field.name} ($sqlType, required: ${field.required})');
     }
     
     buffer.write(columns.join(', '));
     
     if (schema.primaryKey != null) {
       buffer.write(', PRIMARY KEY (${schema.primaryKey})');
+      debugPrint('[VlinderDatabase]   Primary key: ${schema.primaryKey}');
     }
     
     buffer.write(')');
     
-    await customStatement(buffer.toString());
+    final sql = buffer.toString();
+    debugPrint('[VlinderDatabase] Generated SQL: $sql');
+    
+    await customStatement(sql);
+    debugPrint('[VlinderDatabase] Table ${schema.name} created successfully');
   }
 
   /// Get SQL type from schema field type
@@ -116,4 +174,5 @@ LazyDatabase _openConnection() {
     return NativeDatabase(file);
   });
 }
+
 

@@ -45,6 +45,15 @@ class WorkflowParser {
 
   /// Initialize workflow constructor functions in Hetu
   void _initializeWorkflowConstructors() {
+    // Check if functions are already defined to avoid redefinition errors
+    try {
+      interpreter.fetch('defineWorkflow');
+      // Functions already exist, skip definition
+      return;
+    } catch (_) {
+      // Functions don't exist, proceed with definition
+    }
+
     final workflowScript = '''
       fun defineWorkflow(id, label, initialStep, steps) {
         final result = {
@@ -73,15 +82,15 @@ class WorkflowParser {
     try {
       interpreter.eval(workflowScript);
     } catch (e) {
-      // Ignore if already defined
+      // Ignore if already defined (shouldn't happen due to check above, but keep for safety)
     }
   }
 
   /// Load workflows from workflows.ht file content
   Map<String, Workflow> loadWorkflows(String scriptContent) {
     try {
-      final fullScript = _getWorkflowConstructorsScript() + '\n\n' + scriptContent;
-      interpreter.eval(fullScript);
+      // Workflow constructors are already defined in constructor, just evaluate user script
+      interpreter.eval(scriptContent);
 
       final workflows = <String, Workflow>{};
 
