@@ -159,6 +159,9 @@ fun submit_patient() {
   
   logInfo("Saved patient query operation ID: ${queryOpId}")
   logInfo("After save completes, use getDbResult(${queryOpId}) to get the saved patient from database")
+  
+  // Navigate back to landing screen after successful submission
+  navigate("patient_landing")
 }
 
 // Load saved patient action - loads the saved patient data into a form

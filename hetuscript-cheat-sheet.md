@@ -512,6 +512,9 @@ final result = "Value: ${value.toString()}"
 4. **Use spread syntax for merging**: `{...obj1, ...obj2}` - NOT `Object.assign()`
 5. **Database operations are async**: Use `getDbResult(opId)` after operation completes
 6. **Screen IDs must match**: `navigate("id")` must match `id` field in UI YAML
+7. **Ternary with type checks can fail**: Use explicit if-else when condition involves `is num`, `is str`, etc.
+   - Problematic: `final value = x is num ? x : null` (may return boolean)
+   - Recommended: `var value = null; if (x is num) { value = x }`
 
 ---
 

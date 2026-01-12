@@ -58,6 +58,23 @@ final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)  
 ```
 - Type checking in Hetu scripts: use `is str`, `is num`, `is bool`, `is List`, etc.
 
+### Ternary Expressions with Type Checks
+- **CRITICAL**: Ternary expressions with type checks (`is num`, `is str`, etc.) can sometimes evaluate incorrectly
+- When using type checks in ternaries, prefer explicit if-else statements for reliability
+- Example:
+```hetu
+// PROBLEMATIC - Ternary with type check may evaluate incorrectly
+final ageValue = age is num ? age : null  // May return boolean instead of number
+
+// RECOMMENDED - Use explicit if-else for type checks
+var ageValue = null
+if (age is num) {
+  ageValue = age
+}
+```
+- Ternary expressions work fine for simple conditions (comparisons, logical operators)
+- Use if-else when the condition involves type checks (`is num`, `is str`, `is bool`, etc.)
+
 ### HTStruct Usage
 - Import `package:hetu_script/values.dart` when using `HTStruct`
 - Access values using `struct[key]` or iterate with `for (final key in struct.keys)`

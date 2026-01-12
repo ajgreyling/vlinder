@@ -400,6 +400,7 @@ final result = hetu.invoke('functionName', positionalArgs: [1, 2]); // NOT call(
 - UI scripts call widgets with named syntax: `Screen(id: 'x', title: 'y', children: [...])`
 - Constructor functions must be: `fun Screen({id, title, children})` not `fun Screen(id, title, children)`
 - Use **spread syntax** `{...obj1, ...obj2}` to merge objects, NOT `Object.assign()` (not available in Hetu runtime)
+- **Ternary expressions**: Work for simple conditions, but **avoid ternaries with type checks** (`is num`, `is str`, etc.) - use explicit if-else instead
 - Example:
 ```hetu
 // Correct widget constructor
@@ -683,6 +684,17 @@ fun submit_customer() {
 2. **Access actionContext** - Form values and validation state are available via `actionContext.formValues` and `actionContext.isValid`
 3. **Database functions available** - All database functions (`save()`, `query()`, etc.) are automatically available
 4. **Logging functions available** - Use `log()`, `logInfo()`, `logWarning()`, `logError()` for debugging
+5. **Type checking** - When checking types (`is num`, `is str`, etc.), use explicit if-else instead of ternary expressions:
+```hetu
+// PROBLEMATIC - Ternary with type check may evaluate incorrectly
+final ageValue = age is num ? age : null  // May return boolean instead of number
+
+// RECOMMENDED - Use explicit if-else for type checks
+var ageValue = null
+if (age is num) {
+  ageValue = age
+}
+```
 
 **Action Invocation:**
 
