@@ -165,26 +165,71 @@ final validationRules = {
 
 Defines action functions for navigation and form submission. This file demonstrates:
 
-- **Navigation Actions** - Multi-step form navigation with validation
+- **Navigation Actions** - Multi-step form navigation with validation using `navigate()` function
 - **Conditional Navigation** - Skip steps based on patient age
 - **Form Submission** - Save patient data to database
 - **Validation** - Field validation before navigation/submission
+- **Form Value Accumulation** - Accessing form values from previous screens
 
 **Example:**
 ```hetu
-fun next_to_senior_screening() {
+// Start registration - clears accumulated values and navigates
+fun start_registration() {
+  logInfo("Starting registration")
+  // Clear accumulated form values for new registration
+  _patientFormValues = {}
+  // Navigate to basic info screen
+  navigate("patient_basic_info")
+}
+
+// Navigate to health info - validates basic info first
+fun next_to_health_info() {
+  logInfo("next_to_health_info action called")
+  
+  // Access form values from actionContext (injected by ActionHandler)
   final formValues = actionContext.formValues ?? {}
-  final age = formValues['age']
+  final isValid = actionContext.isValid ?? false
+  
+  // Validate required fields
+  if (!isValid) {
+    logError("Form validation failed - cannot proceed to health info")
+    return
+  }
+  
+  // Navigate to health info screen
+  navigate("patient_health_info")
+}
+
+// Navigate to senior screening - uses age from Basic Info screen
+fun next_to_senior_screening() {
+  // actionContext.formValues includes values from ALL previous screens:
+  // - Basic Info: firstName, lastName, age, gender, etc.
+  // - Health Info: weight, height, pregnant
+  final formValues = actionContext.formValues ?? {}
+  final age = formValues['age'] // Available from Basic Info screen!
+  
+  if (age == null) {
+    logError("Age is required to determine if senior screening is needed")
+    return
+  }
+  
   final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
   
   if (ageValue != null && ageValue > 50) {
-    // Navigate to senior screening
+    logInfo("Patient is over 50, navigating to senior screening")
+    navigate("patient_senior_screening")
   } else {
-    // Skip and submit directly
+    logInfo("Patient is under 50, skipping senior screening and submitting")
     submit_patient()
   }
 }
 ```
+
+**Key Points:**
+- Use `navigate(screenId)` function for navigation - screen IDs must match `id` field in UI YAML
+- Form values from previous screens are automatically available via `actionContext.formValues`
+- Clear `_patientFormValues = {}` when starting a new multi-step form
+- Navigation happens asynchronously after action execution completes
 
 ## Running the Sample App
 
@@ -263,7 +308,20 @@ The visibility expression is evaluated reactively as form values change, using `
 
 ### 2. Multi-Screen Forms
 
-Forms can span multiple screens while maintaining state. The same `entity: Patient` is used across screens, and form state persists as users navigate between screens.
+Forms can span multiple screens while maintaining state. The same `entity: Patient` is used across screens, and form values are automatically accumulated:
+
+- **Form Value Accumulation**: Values from previous screens are stored in `_patientFormValues`
+- **Action Context Merging**: `actionContext.formValues` merges accumulated + current form values
+- **Automatic Saving**: Current form values are saved to accumulated values before navigation
+- **Cross-Screen Access**: Actions on later screens can access form values from earlier screens
+
+**Example Flow:**
+1. User fills Basic Info screen (firstName, lastName, age, gender)
+2. Clicks "Next" → `next_to_health_info()` validates and calls `navigate("patient_health_info")`
+3. Basic Info values are saved to `_patientFormValues` before navigation
+4. User fills Health Info screen (weight, height, pregnant)
+5. Clicks "Next" → `next_to_senior_screening()` can access `age` from Basic Info via `actionContext.formValues['age']`
+6. Navigation decision (senior screening vs. submit) uses age from Basic Info screen
 
 ### 3. Branching Logic
 

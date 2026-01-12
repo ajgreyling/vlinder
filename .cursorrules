@@ -44,6 +44,20 @@ if (value is HTString) { ... }  // WRONG
 if (value is HTInt) { ... }      // WRONG
 ```
 
+### Hetu Script Type System
+- **CRITICAL**: In Hetu scripts (`.ht` files), use Hetu types, NOT Dart types
+- Hetu uses `str` for strings, NOT `String`
+- Hetu uses `num` for numbers (both int and float)
+- Example:
+```hetu
+// CORRECT - Hetu script types
+final ageValue = age is num ? age : (age is str ? int.tryParse(age) : null)
+
+// INCORRECT - Dart types don't work in Hetu scripts
+final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)  // WRONG
+```
+- Type checking in Hetu scripts: use `is str`, `is num`, `is bool`, `is List`, etc.
+
 ### HTStruct Usage
 - Import `package:hetu_script/values.dart` when using `HTStruct`
 - Access values using `struct[key]` or iterate with `for (final key in struct.keys)`
@@ -581,6 +595,23 @@ onFormStateReady: (formState) {
   });
 }
 ```
+
+### Conditional Visibility Expressions
+- **CRITICAL**: Visibility expressions have access to **both** accumulated form values (`_patientFormValues`) and current form values
+- Field widgets (`VlinderTextField`, `VlinderBooleanField`, `VlinderNumberField`) merge accumulated + current values before evaluating visibility
+- Current form values take precedence over accumulated values (allows updates)
+- This enables multi-step forms where fields on later screens can reference values from earlier screens
+- Example:
+```yaml
+# Health Info screen - pregnant field references age and gender from Basic Info
+- widgetType: BooleanField
+  field: pregnant
+  label: Pregnant?
+  required: true
+  visible: "age > 16 && gender == 'Female'"  # age and gender from Basic Info screen
+```
+- **Implementation**: Field widgets fetch `_patientFormValues` from Hetu interpreter, merge with `formState.values`, then inject merged values for visibility evaluation
+- Visibility expressions are evaluated reactively using `ValueListenableBuilder` on form state changes
 
 ## Best Practices
 

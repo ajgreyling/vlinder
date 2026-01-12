@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../binding/drift_binding.dart';
 import '../core/interpreter_provider.dart';
 import 'package:hetu_script/hetu_script.dart';
+import 'package:hetu_script/values.dart';
 
 /// NumberField widget - Numeric input (integer / decimal) bound to Drift field
 /// 
@@ -130,9 +131,27 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     }
 
     try {
-      // Inject form values as context variables
-      final formValues = formState.values;
-      for (final entry in formValues.entries) {
+      // Get accumulated form values from Hetu interpreter (for multi-step forms)
+      Map<String, dynamic> accumulatedValues = {};
+      try {
+        final accumulated = interpreter.fetch('_patientFormValues');
+        if (accumulated is Map) {
+          accumulatedValues = Map<String, dynamic>.from(accumulated);
+        } else if (accumulated is HTStruct) {
+          // Convert HTStruct to Map
+          for (final key in accumulated.keys) {
+            accumulatedValues[key.toString()] = accumulated[key];
+          }
+        }
+      } catch (_) {
+        // No accumulated values, continue with current form values only
+      }
+      
+      // Merge accumulated values with current form values (current takes precedence)
+      final mergedValues = <String, dynamic>{...accumulatedValues, ...formState.values};
+      
+      // Inject merged form values as context variables for visibility evaluation
+      for (final entry in mergedValues.entries) {
         final varName = entry.key;
         final varValue = entry.value;
         try {

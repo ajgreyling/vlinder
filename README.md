@@ -706,18 +706,81 @@ Actions are invoked when buttons are clicked:
 6. After function completes, ActionHandler processes queued database operations
 7. Results are stored in `_dbResults` and accessible via `getDbResult(opId)`
 
+**Screen Navigation:**
+
+Vlinder supports dynamic screen navigation using the `navigate(screenId)` function. Screens are loaded from UI YAML by matching the `id` field:
+
+```hetu
+fun start_registration() {
+  // Clear accumulated form values for new registration
+  _patientFormValues = {}
+  // Navigate to basic info screen
+  navigate("patient_basic_info")
+}
+
+fun next_to_health_info() {
+  // Validate form first
+  if (!actionContext.isValid) {
+    logError("Form validation failed")
+    return
+  }
+  // Navigate to next screen
+  navigate("patient_health_info")
+}
+```
+
+**Key Points:**
+- Navigation function `navigate(screenId)` is automatically registered in Hetu interpreter
+- Screen IDs must match the `id` field in UI YAML screen definitions
+- Navigation requests are processed **after** action execution completes
+- Screens are loaded dynamically from UI YAML and wrapped with necessary providers
+- Navigation is asynchronous - don't expect immediate screen change
+
+**Multi-Step Forms:**
+
+For forms spanning multiple screens, form values are automatically accumulated:
+
+```hetu
+fun start_registration() {
+  // Clear accumulated values when starting new registration
+  _patientFormValues = {}
+  navigate("patient_basic_info")
+}
+
+fun next_to_senior_screening() {
+  // actionContext.formValues includes:
+  // - All values from Basic Info screen (firstName, lastName, age, etc.)
+  // - All values from Health Info screen (weight, height, pregnant)
+  final age = actionContext.formValues['age'] // Available from Basic Info!
+  if (age > 50) {
+    navigate("patient_senior_screening")
+  } else {
+    submit_patient()
+  }
+}
+```
+
+**How It Works:**
+- `_patientFormValues` stores accumulated form values across screens
+- Action context merges accumulated + current form values (current takes precedence)
+- Form values are automatically saved to accumulated values before navigation
+- All screens using the same entity share accumulated form values
+- Always clear `_patientFormValues = {}` when starting a new multi-step form
+
 **Fallback to String-Based Actions:**
 
 If a Hetu function is not found, ActionHandler falls back to string-based actions:
 - `submit` or `submit_*` - Form submission
-- `navigate_*` - Navigation
+- `navigate_*` - Navigation (legacy, prefer `navigate()` function)
 - `cancel` - Cancel action
 
 **Best Practices:**
 
 - Define all custom actions in `actions.ht` (required file)
+- Use `navigate(screenId)` for screen navigation, not string-based handlers
 - Use database API functions for data persistence
 - Validate form data before saving
+- Clear `_patientFormValues` when starting new multi-step forms
 - Use logging functions for debugging
 - Handle errors gracefully with try-catch if needed
 
@@ -736,8 +799,22 @@ Vlinder includes comprehensive debug logging throughout:
 - Accepts optional Hetu interpreter instance (shares with ContainerAppShell)
 - Registers SDK widgets with `WidgetRegistry`
 - Provides `loadUI()` to parse and build widget trees
+- Provides `loadScreenById()` to load specific screens by ID from UI YAML
 - Handles errors gracefully with fallback UI
 - Includes debug logging for troubleshooting
+
+**Screen Loading:**
+
+Screens can be loaded dynamically by ID:
+```dart
+// Load entire UI (first screen found)
+final widget = runtime.loadUI(yamlContent, context);
+
+// Load specific screen by ID
+final screenWidget = runtime.loadScreenById(yamlContent, "patient_basic_info", context);
+```
+
+Screens are loaded from UI YAML by matching the `id` field in screen definitions. Loaded screens must be wrapped with providers (`HetuInterpreterProvider`, `DatabaseAPIProvider`, `UIYAMLProvider`) to function correctly.
 
 ### Interpreter Instance Sharing
 
@@ -746,15 +823,23 @@ Vlinder uses a **single Hetu interpreter instance** shared across all components
 1. **ContainerAppShell** creates the interpreter and:
    - Registers database functions (`save()`, `query()`, etc.)
    - Registers logging functions (`log()`, `logInfo()`, etc.)
+   - Registers navigation function (`navigate()`)
+   - Initializes `_patientFormValues` for multi-step forms
    - Loads schemas, workflows, rules, and actions
+   - Stores UI YAML content for screen navigation
 2. **VlinderRuntime** receives the shared interpreter (via constructor parameter)
-3. **HetuInterpreterProvider** wraps the UI to make interpreter available to widgets
-4. **Widgets** access the interpreter via `HetuInterpreterProvider.of(context)`
+3. **Providers** wrap the UI to make resources available:
+   - `HetuInterpreterProvider` - Makes interpreter available to widgets
+   - `DatabaseAPIProvider` - Makes database API available
+   - `UIYAMLProvider` - Makes UI YAML content available for navigation
+4. **Widgets** access resources via provider `of(context)` methods
 
 This pattern ensures:
 - UI scripts can reference schemas, workflows, and rules
 - Action handlers have access to all loaded data and database functions
 - Database functions are available in all `.ht` files (actions.ht, rules.ht, etc.)
+- Navigation can load screens dynamically from UI YAML
+- Form values accumulate across multi-step forms
 - Single source of truth for Hetu script state
 - No state isolation between parsers and runtime
 

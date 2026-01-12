@@ -78,9 +78,15 @@ fun next_to_senior_screening() {
     return
   }
   
-  final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
+  // Convert age to number - form values are already numbers from NumberField
+  // Use explicit if-else to avoid ternary evaluation issues
+  var ageValue = null
+  if (age is num) {
+    ageValue = age
+  }
+  
   if (ageValue == null) {
-    logError("Invalid age value")
+    logError("Invalid age value - must be a number")
     return
   }
   
@@ -112,7 +118,12 @@ fun submit_patient() {
   // Additional validation for conditional required fields
   final age = formValues['age']
   final gender = formValues['gender']?.toString() ?? ''
-  final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
+  // Convert age to number - form values are already numbers from NumberField
+  // Use explicit if-else to avoid ternary evaluation issues
+  var ageValue = null
+  if (age is num) {
+    ageValue = age
+  }
   
   // Validate pregnant field for females over 16
   if (ageValue != null && ageValue > 16 && gender == 'Female') {

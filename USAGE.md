@@ -17,10 +17,11 @@ This will:
 ### 2. Add Your .ht Files
 
 Place your Hetu script files and schema definition in `server/assets/`:
-- `ui.yaml` - UI definitions (YAML format)
+- `ui.yaml` - UI definitions (YAML format) - defines screens and widgets
 - `schema.yaml` - Entity schemas in OpenAPI YAML format with `$ref` references for relationships
 - `workflows.yaml` - Workflow definitions (YAML format)
-- `rules.ht` - Business rules
+- `rules.ht` - Business rules and validation logic
+- `actions.ht` - **REQUIRED** - Action handler functions for navigation and form submission
 
 ### 3. Build Container App
 
@@ -49,8 +50,10 @@ The build script will:
 
 The `sample_app/assets/` directory contains example files demonstrating:
 - Form with validation
-- Multi-step workflow
+- Multi-step workflow with screen navigation
 - Business rules
+- Screen navigation using `navigate()` function
+- Form value accumulation across multiple screens
 - Schema definitions in OpenAPI YAML format with `$ref` references (`schema.yaml`)
 
 Copy these to `server/assets/` to test:
