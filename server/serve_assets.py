@@ -50,10 +50,11 @@ def main():
         sys.exit(1)
     
     # Check if assets directory has files
+    yaml_files = list(ASSETS_DIR.glob('*.yaml'))
     ht_files = list(ASSETS_DIR.glob('*.ht'))
-    if not ht_files:
-        print(f"Warning: No .ht files found in {ASSETS_DIR}")
-        print(f"Expected files: ui.ht, schema.ht, workflows.ht, rules.ht, actions.ht")
+    if not yaml_files and not ht_files:
+        print(f"Warning: No asset files found in {ASSETS_DIR}")
+        print(f"Expected files: ui.yaml, schema.yaml, workflows.yaml, rules.ht, actions.ht")
     
     # Create server
     with socketserver.TCPServer(("", PORT), CORSRequestHandler) as httpd:
@@ -62,6 +63,8 @@ def main():
         print(f"Serving assets from: {ASSETS_DIR}")
         print(f"Server running on: http://localhost:{PORT}")
         print(f"Available files:")
+        for yaml_file in yaml_files:
+            print(f"  - {yaml_file.name}")
         for ht_file in ht_files:
             print(f"  - {ht_file.name}")
         print(f"\nPress Ctrl+C to stop the server")

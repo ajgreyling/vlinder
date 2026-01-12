@@ -19,21 +19,21 @@ void main() {
       interpreter.init();
       
       // Step 2: Load and parse schemas
-      final schemaFile = File('${assetsDir.path}/schema.ht');
+      final schemaFile = File('${assetsDir.path}/schema.yaml');
       expect(schemaFile.existsSync(), true, 
-          reason: 'schema.ht must exist');
+          reason: 'schema.yaml (OpenAPI format) must exist');
       
-      final schemaLoader = SchemaLoader(interpreter: interpreter);
+      final schemaLoader = SchemaLoader();
       final schemas = schemaLoader.loadSchemas(schemaFile.readAsStringSync());
       expect(schemas, isNotEmpty, 
           reason: 'At least one schema must be loaded');
       
       // Step 3: Load and parse workflows
-      final workflowFile = File('${assetsDir.path}/workflows.ht');
+      final workflowFile = File('${assetsDir.path}/workflows.yaml');
       expect(workflowFile.existsSync(), true, 
-          reason: 'workflows.ht must exist');
+          reason: 'workflows.yaml must exist');
       
-      final workflowParser = WorkflowParser(interpreter: interpreter);
+      final workflowParser = WorkflowParser();
       final workflows = workflowParser.loadWorkflows(workflowFile.readAsStringSync());
       expect(workflows, isNotEmpty, 
           reason: 'At least one workflow must be loaded');
@@ -55,9 +55,9 @@ void main() {
       
       // Step 6: Initialize VlinderRuntime and load UI
       final runtime = VlinderRuntime();
-      final uiFile = File('${assetsDir.path}/ui.ht');
+      final uiFile = File('${assetsDir.path}/ui.yaml');
       expect(uiFile.existsSync(), true, 
-          reason: 'ui.ht must exist');
+          reason: 'ui.yaml must exist');
       
       final uiContent = uiFile.readAsStringSync();
       
@@ -79,11 +79,8 @@ void main() {
     });
     
     test('Workflow step references are valid', () {
-      final interpreter = Hetu();
-      interpreter.init();
-      
-      final workflowParser = WorkflowParser(interpreter: interpreter);
-      final workflowFile = File('${assetsDir.path}/workflows.ht');
+      final workflowParser = WorkflowParser();
+      final workflowFile = File('${assetsDir.path}/workflows.yaml');
       final workflows = workflowParser.loadWorkflows(workflowFile.readAsStringSync());
       
       for (final workflow in workflows.values) {

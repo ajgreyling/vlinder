@@ -79,11 +79,11 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
-# Step 3: Verify Hetu Script Files Exist
-print_step "Verifying Hetu Script Files"
+# Step 3: Verify Asset Files Exist
+print_step "Verifying Asset Files"
 
 ASSETS_DIR="$PROJECT_ROOT/sample_app/assets"
-REQUIRED_FILES=("schema.ht" "ui.ht" "workflows.ht" "rules.ht")
+REQUIRED_FILES=("schema.yaml" "ui.yaml" "workflows.yaml" "rules.ht")
 
 for file in "${REQUIRED_FILES[@]}"; do
     if [ -f "$ASSETS_DIR/$file" ]; then
@@ -137,5 +137,8 @@ else
     echo -e "${NC}"
     exit 1
 fi
+
+
+
 
 

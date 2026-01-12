@@ -150,21 +150,27 @@ rm -f /tmp/vlinder_server.pid /tmp/vlinder_asset_server.pid /tmp/vlinder_log_ser
 echo -e "${GREEN}Cleanup complete. Starting fresh...${NC}"
 echo ""
 
-# Copy .ht files from sample_app/assets to server/assets
-echo -e "${GREEN}Copying .ht files from sample_app/assets to server/assets...${NC}"
+# Copy all files from sample_app/assets to server/assets
+echo -e "${GREEN}Copying all files from sample_app/assets to server/assets...${NC}"
 SAMPLE_ASSETS_DIR="$PROJECT_ROOT/sample_app/assets"
 SERVER_ASSETS_DIR="$PROJECT_ROOT/server/assets"
 
 # Ensure server/assets directory exists
 mkdir -p "$SERVER_ASSETS_DIR"
 
-# Copy all .ht files
+# Copy all files (.ht, .yaml, etc.)
 if [ -d "$SAMPLE_ASSETS_DIR" ]; then
+    # Copy .ht files
     cp "$SAMPLE_ASSETS_DIR"/*.ht "$SERVER_ASSETS_DIR/" 2>/dev/null || true
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Copied .ht files to server/assets${NC}"
+    # Copy .yaml files
+    cp "$SAMPLE_ASSETS_DIR"/*.yaml "$SERVER_ASSETS_DIR/" 2>/dev/null || true
+    # Copy .cursorrules if present
+    cp "$SAMPLE_ASSETS_DIR"/.cursorrules "$SERVER_ASSETS_DIR/" 2>/dev/null || true
+    
+    if [ $? -eq 0 ] || [ -n "$(ls -A "$SERVER_ASSETS_DIR"/*.ht 2>/dev/null)" ] || [ -n "$(ls -A "$SERVER_ASSETS_DIR"/*.yaml 2>/dev/null)" ]; then
+        echo -e "${GREEN}Copied all asset files to server/assets${NC}"
     else
-        echo -e "${YELLOW}Warning: No .ht files found in sample_app/assets${NC}"
+        echo -e "${YELLOW}Warning: No asset files found in sample_app/assets${NC}"
     fi
 else
     echo -e "${YELLOW}Warning: sample_app/assets directory not found${NC}"
@@ -335,7 +341,7 @@ if command -v qrencode &> /dev/null; then
         # macOS - open new Terminal window with QR code
         osascript <<EOF
 tell application "Terminal"
-    do script "clear && echo '========================================' && echo 'Vlinder Server QR Code' && echo '========================================' && echo '' && echo 'Server URL:' && echo '$NGROK_URL' && echo '' && echo 'Scan this QR code with the Vlinder Container app:' && echo '' && qrencode -m 2 -t utf8 <<< '$NGROK_URL' && echo '' && echo '========================================' && echo 'Press Ctrl+C to close this window' && echo '========================================'"
+    do script "clear && echo '========================================' && echo 'Vlinder Server QR Code' && echo '========================================' && echo '' && echo 'Server URL (copy this for virtual devices):' && echo '' && echo '$NGROK_URL' && echo '' && echo '========================================' && echo 'Scan this QR code with the Vlinder Container app:' && echo '========================================' && echo '' && qrencode -m 2 -t utf8 <<< '$NGROK_URL' && echo '' && echo '========================================' && echo 'For virtual devices: Copy the URL above and paste' && echo 'it in the container app input field' && echo '========================================' && echo 'Press Ctrl+C to close this window' && echo '========================================'"
     activate
 end tell
 EOF
@@ -344,7 +350,14 @@ EOF
     else
         echo -e "${YELLOW}Note: osascript not available. Displaying QR code here:${NC}"
         echo ""
+        echo "Server URL (copy this for virtual devices):"
+        echo "$NGROK_URL"
+        echo ""
+        echo "Scan this QR code with the Vlinder Container app:"
+        echo ""
         qrencode -m 2 -t utf8 <<< "$NGROK_URL"
+        echo ""
+        echo "For virtual devices: Copy the URL above and paste it in the container app input field"
         echo ""
     fi
 else
@@ -353,8 +366,10 @@ else
     echo "  macOS: brew install qrencode"
     echo "  Linux: sudo apt-get install qrencode"
     echo ""
-    echo "Server URL: $NGROK_URL"
-    echo "Scan this URL manually or install qrencode for QR code display"
+    echo "Server URL (copy this for virtual devices):"
+    echo "$NGROK_URL"
+    echo ""
+    echo "Copy this URL and paste it in the container app input field"
 fi
 
 # Check if Flutter is available and offer device deployment

@@ -44,8 +44,8 @@ class _VlinderHomePageState extends State<VlinderHomePage> {
 
   Future<void> _loadExampleUI() async {
     try {
-      // Load example ui.ht file
-      final uiScript = await rootBundle.loadString('example/ui.ht');
+      // Load example ui.yaml file
+      final uiScript = await rootBundle.loadString('example/ui.yaml');
       
       // Store the script - we'll build the UI in the build method when context is available
       setState(() {

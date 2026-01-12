@@ -27,6 +27,9 @@ dependencies:
   # HTTP client for fetching assets
   http: ^1.1.0
   
+  # YAML parser for UI definitions
+  yaml: ^3.1.2
+  
   # Device info for logging
   device_info_plus: ^9.1.0
   
@@ -50,8 +53,8 @@ flutter:
   uses-material-design: true
   
   assets:
-    - sample_app/assets/schema.ht
-    - sample_app/assets/ui.ht
-    - sample_app/assets/workflows.ht
+    - sample_app/assets/schema.yaml
+    - sample_app/assets/ui.yaml
+    - sample_app/assets/workflows.yaml
     - sample_app/assets/rules.ht
 

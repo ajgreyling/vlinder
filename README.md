@@ -94,9 +94,9 @@ They operate strictly within a **sandboxed API surface**.
 
 Only the following files are delivered to the device when behaviour changes:
 
-- `schema.ht` - Entity schemas and field definitions
-- `workflows.ht` - Workflow definitions and step transitions
-- `ui.ht` - UI screen and widget definitions
+- `schema.yaml` - Entity schemas defined in OpenAPI format with JSON Schema component definitions and `$ref` references for relationships
+- `workflows.yaml` - Workflow definitions and step transitions (YAML format)
+- `ui.yaml` - UI screen and widget definitions (YAML format)
 - `rules.ht` - Business rules and validation logic
 - `actions.ht` - Action handler functions (required)
 
@@ -244,7 +244,7 @@ Map engine details (Mapbox, MapLibre, Google Maps) are **hidden from scripts**.
 
 ## Data Model Integration
 
-- Schemas are defined declaratively (`schema.ht`)
+- Schemas are defined in **OpenAPI YAML format** (`schema.yaml`) with JSON Schema component definitions and **`$ref` references** for relationships between entities
 - Stored locally using **Drift / SQLite**
 - Synced via **Posduif** to PostgreSQL
 
@@ -252,6 +252,68 @@ Widgets bind directly to schema fields, enabling:
 - Validation
 - Conflict-aware sync
 - Efficient diffs
+
+### Schema Format
+
+Schemas use the **OpenAPI YAML format** with JSON Schema for component definitions. **Relationships between entities are defined using `$ref` references**, allowing entities to reference each other. Foreign key relationships are specified using the `x-foreign-key` extension for database-level constraints.
+
+**Example:**
+```yaml
+openapi: 3.0.0
+info:
+  title: Vlinder Schema Definitions
+  version: 1.0.0
+
+components:
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+      required:
+        - id
+        - name
+        - email
+    
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customerId:
+          type: integer
+          format: int64
+          x-foreign-key: Customer.id
+        customer:
+          $ref: '#/components/schemas/Customer'
+        total:
+          type: number
+          format: decimal
+          minimum: 0
+      required:
+        - id
+        - customerId
+        - total
+```
+
+This format supports:
+- **Relationships**: Use `$ref` to reference other schemas
+- **Foreign Keys**: Use `x-foreign-key` extension for database relationships
+- **Dual Database Support**: Works for both PostgreSQL and SQLite/Drift
+- **Industry Standard**: Uses OpenAPI 3.0 and JSON Schema specifications
 
 ---
 
@@ -422,14 +484,14 @@ This script:
 
 ### Hetu Script Integration
 
-Vlinder parsers use Hetu Script to load and parse `.ht` files:
+Vlinder parsers use Hetu Script to load and parse `.ht` files, and YAML parsing for schemas, UI, and workflows:
 
-- **SchemaLoader** - Parses `schema.ht` files into `EntitySchema` objects
-- **UIParser** - Parses `ui.ht` files into widget trees
-- **WorkflowParser** - Parses `workflows.ht` files into workflow definitions
-- **RulesParser** - Parses `rules.ht` files into rule definitions
+- **SchemaLoader** - Parses `schema.yaml` files (OpenAPI 3.0 format) into `EntitySchema` objects using YAML parsing (no Hetu interpreter required)
+- **YAMLUIParser** - Parses `ui.yaml` files (YAML format) into widget trees (no Hetu interpreter required)
+- **WorkflowParser** - Parses `workflows.yaml` files (YAML format) into workflow definitions (no Hetu interpreter required)
+- **RulesParser** - Parses `rules.ht` files into rule definitions (requires Hetu interpreter)
 
-All parsers:
+Hetu-based parsers (RulesParser):
 - Require Hetu interpreter to be initialized (`hetu.init()`)
 - Use `interpreter.fetch()` to get variables after `eval()`
 - Iterate HTStruct using `for (final key in struct.keys)`
@@ -437,6 +499,10 @@ All parsers:
 - **Check for existing functions before defining them** to prevent "already defined" errors
 - Define constructor functions once in the constructor, not in `load*()` methods
 - **Use named parameters** in constructor functions to match UI script syntax
+
+YAML-based parsers (SchemaLoader, YAMLUIParser, WorkflowParser):
+- Use `package:yaml` to parse YAML content
+- Parse OpenAPI 3.0 format for schemas with `$ref` references for relationships
 - Form widgets use `fields` array (automatically converted to children), empty `children` arrays are skipped
 
 ### Database Integration
@@ -468,7 +534,7 @@ Vlinder uses **Drift** for SQLite ORM and **sqlite3** for custom SQL execution:
 
 #### Database API in Hetu Scripts
 
-Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database functions are **automatically registered** in the Hetu interpreter during app initialization and are available in all `.ht` files (actions.ht, workflows.ht, rules.ht, etc.).
+Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact with the SQLite database. Database functions are **automatically registered** in the Hetu interpreter during app initialization and are available in all `.ht` files (actions.ht, rules.ht, etc.).
 
 **Important:** Database operations use an **async queue pattern** - they are queued during script execution and processed asynchronously by `ActionHandler` after action completion.
 
@@ -622,13 +688,12 @@ fun submit_customer() {
 
 Actions are invoked when buttons are clicked:
 
-```hetu
-// ui.ht
-ActionButton(
-  label: 'Register',
-  action: 'submit_customer', // Calls submit_customer() function from actions.ht
-  style: 'primary',
-)
+```yaml
+# ui.yaml
+- widgetType: ActionButton
+  label: Register
+  action: submit_customer  # Calls submit_customer() function from actions.ht
+  style: primary
 ```
 
 **Action Execution Flow:**
@@ -689,7 +754,7 @@ Vlinder uses a **single Hetu interpreter instance** shared across all components
 This pattern ensures:
 - UI scripts can reference schemas, workflows, and rules
 - Action handlers have access to all loaded data and database functions
-- Database functions are available in all `.ht` files (actions.ht, workflows.ht, etc.)
+- Database functions are available in all `.ht` files (actions.ht, rules.ht, etc.)
 - Single source of truth for Hetu script state
 - No state isolation between parsers and runtime
 

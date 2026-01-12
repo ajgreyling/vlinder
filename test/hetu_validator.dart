@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:vlinder/vlinder/schema/schema_loader.dart';
+import 'package:vlinder/vlinder/parser/yaml_ui_parser.dart';
 import 'package:vlinder/vlinder/parser/ui_parser.dart';
 import 'package:vlinder/vlinder/workflow/workflow_parser.dart';
 import 'package:vlinder/vlinder/rules/rules_parser.dart';
@@ -12,16 +13,14 @@ void main() {
   group('Hetu Script Validation', () {
     final assetsDir = Directory('sample_app/assets');
     
-    test('Schema file (schema.ht) validation', () {
-      final schemaFile = File('${assetsDir.path}/schema.ht');
+    test('Schema file (schema.yaml) validation', () {
+      final schemaFile = File('${assetsDir.path}/schema.yaml');
       expect(schemaFile.existsSync(), true, 
-          reason: 'schema.ht file must exist in sample_app/assets/');
+          reason: 'schema.yaml file (OpenAPI format) must exist in sample_app/assets/');
       
       final content = schemaFile.readAsStringSync();
-      final interpreter = Hetu();
-      interpreter.init();
       
-      final loader = SchemaLoader(interpreter: interpreter);
+      final loader = SchemaLoader();
       
       // Should parse without errors
       expect(() => loader.loadSchemas(content), returnsNormally,
@@ -47,17 +46,15 @@ void main() {
       }
     });
     
-    test('UI file (ui.ht) validation', () {
-      final uiFile = File('${assetsDir.path}/ui.ht');
+    test('UI file (ui.yaml) validation', () {
+      final uiFile = File('${assetsDir.path}/ui.yaml');
       expect(uiFile.existsSync(), true, 
-          reason: 'ui.ht file must exist in sample_app/assets/');
+          reason: 'ui.yaml file must exist in sample_app/assets/');
       
       final content = uiFile.readAsStringSync();
-      final interpreter = Hetu();
-      interpreter.init();
       
       final registry = WidgetRegistry();
-      final parser = UIParser(interpreter: interpreter, registry: registry);
+      final parser = YAMLUIParser(registry: registry);
       
       // Should parse without errors
       expect(() => parser.parse(content), returnsNormally,
@@ -72,16 +69,14 @@ void main() {
           reason: 'Screen must have an id');
     });
     
-    test('Workflow file (workflows.ht) validation', () {
-      final workflowFile = File('${assetsDir.path}/workflows.ht');
+    test('Workflow file (workflows.yaml) validation', () {
+      final workflowFile = File('${assetsDir.path}/workflows.yaml');
       expect(workflowFile.existsSync(), true, 
-          reason: 'workflows.ht file must exist in sample_app/assets/');
+          reason: 'workflows.yaml file must exist in sample_app/assets/');
       
       final content = workflowFile.readAsStringSync();
-      final interpreter = Hetu();
-      interpreter.init();
       
-      final parser = WorkflowParser(interpreter: interpreter);
+      final parser = WorkflowParser();
       
       // Should parse without errors
       expect(() => parser.loadWorkflows(content), returnsNormally,
@@ -156,16 +151,13 @@ void main() {
     
     test('Cross-file reference validation', () {
       // Load all files
-      final interpreter = Hetu();
-      interpreter.init();
-      
-      final schemaLoader = SchemaLoader(interpreter: interpreter);
-      final schemaContent = File('${assetsDir.path}/schema.ht').readAsStringSync();
+      final schemaLoader = SchemaLoader();
+      final schemaContent = File('${assetsDir.path}/schema.yaml').readAsStringSync();
       final schemas = schemaLoader.loadSchemas(schemaContent);
       
       final registry = WidgetRegistry();
-      final uiParser = UIParser(interpreter: interpreter, registry: registry);
-      final uiContent = File('${assetsDir.path}/ui.ht').readAsStringSync();
+      final uiParser = YAMLUIParser(registry: registry);
+      final uiContent = File('${assetsDir.path}/ui.yaml').readAsStringSync();
       final parsedWidget = uiParser.parse(uiContent);
       
       // Validate Form entity references match schema names

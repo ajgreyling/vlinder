@@ -11,7 +11,7 @@ class ContainerConfig {
   static const String _serverUrlKey = 'vlinder_server_url';
   static const String _appVersionKey = 'vlinder_app_version';
 
-  /// Server URL for fetching .ht files
+  /// Server URL for fetching asset files (.yaml, .ht)
   /// Returns null if no URL has been configured (user needs to scan QR code)
   static Future<String?> get serverUrl async {
     // Try environment variable first (for development/testing)
@@ -48,9 +48,9 @@ class ContainerConfig {
 
   /// Asset file names to fetch
   static const List<String> assetFiles = [
-    'ui.ht',
-    'schema.ht',
-    'workflows.ht',
+    'ui.yaml',  // YAML format UI definitions
+    'schema.yaml',  // OpenAPI format schema definitions
+    'workflows.yaml',  // YAML format workflow definitions
     'rules.ht',
     'actions.ht',
   ];

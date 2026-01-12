@@ -1,148 +1,189 @@
 # Vlinder Sample App
 
-This directory contains a complete sample application demonstrating Vlinder's capabilities. The sample app showcases a **Customer Registration** workflow with validation, multi-step forms, and business rules.
+This directory contains a complete sample application demonstrating Vlinder's capabilities. The sample app showcases a **Patient Registration** workflow with validation, multi-step forms, conditional field visibility, branching logic, and business rules.
 
 ## Overview
 
 The sample app demonstrates:
 
-- **Schema Definition** - Entity schemas with field types, constraints, and validation
-- **UI Definition** - Form-based UI with multiple input fields and actions
-- **Workflow Management** - Multi-step workflows with transitions
+- **Schema Definition** - Entity schemas with all primitive types (string, integer, number/decimal, boolean, date-time)
+- **UI Definition** - Multi-screen form-based UI with conditional field visibility
+- **Workflow Management** - Multi-step workflows with conditional transitions
 - **Business Rules** - Validation rules and conditional logic
+- **Branching Logic** - Age and gender-based conditional fields and screens
 
 ## File Structure
 
 ```
 sample_app/
 └── assets/
-    ├── schema.ht      # Entity schema definitions
-    ├── ui.ht          # UI layout and widget definitions
-    ├── workflows.ht    # Workflow definitions and transitions
-    └── rules.ht        # Business rules and validation logic
+    ├── schema.yaml    # Entity schema definitions (OpenAPI format)
+    ├── ui.yaml        # UI layout and widget definitions (YAML format)
+    ├── workflows.yaml # Workflow definitions and transitions (YAML format)
+    ├── rules.ht       # Business rules and validation logic
+    └── actions.ht     # Action handlers for navigation and form submission
 ```
 
 ## Files Explained
 
-### `schema.ht` - Entity Schema Definitions
+### `schema.yaml` - OpenAPI Schema Definitions
 
-Defines the data model for the application. This file demonstrates:
+Defines the data model for the Patient Registration application using **OpenAPI YAML format** with JSON Schema component definitions. This file demonstrates:
 
-- **Customer Entity** - Personal information fields (name, email, age, phone)
-- **Product Entity** - Product catalog fields (name, price, description)
-- **Field Types** - `integer`, `text`, `decimal`, `date`
-- **Constraints** - `maxLength`, `min`, `max`, `pattern` (regex)
+- **OpenAPI Structure** - Uses OpenAPI 3.0 specification format
+- **JSON Schema Components** - Entity schemas defined in `components/schemas` section
+- **Patient Entity** - Comprehensive patient information with all primitive types:
+  - `string`: firstName, lastName, gender, email, phone
+  - `integer`: id, age
+  - `number` (decimal): weight, height
+  - `boolean`: pregnant, prostateHealthy
+  - `date-time`: dateOfBirth, createdAt
+- **Field Types** - All JSON Schema primitive types demonstrated
+- **Constraints** - `maxLength`, `minimum`, `maximum`, `pattern` (JSON Schema constraints)
 - **Required Fields** - Field-level validation requirements
-- **Default Values** - Automatic value assignment
 
 **Example:**
-```hetu
-final customerSchema = {
-  name: 'Customer',
-  primaryKey: 'id',
-  fields: {
-    name: {
-      type: 'text',
-      required: true,
-      constraints: {
-        maxLength: 100,
-      },
-    },
-    email: {
-      type: 'text',
-      required: true,
-      constraints: {
-        pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$',
-      },
-    },
-  },
-};
+```yaml
+openapi: 3.0.0
+info:
+  title: Vlinder Schema Definitions
+  version: 1.0.0
+
+components:
+  schemas:
+    Patient:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+          maxLength: 100
+        age:
+          type: integer
+          minimum: 0
+          maximum: 150
+        weight:
+          type: number
+          format: decimal
+          minimum: 0
+        pregnant:
+          type: boolean
+        dateOfBirth:
+          type: string
+          format: date-time
 ```
 
-### `ui.ht` - User Interface Definition
+### `ui.yaml` - User Interface Definition
 
-Defines the visual layout and user interactions. This file demonstrates:
+Defines the visual layout and user interactions across multiple screens in YAML format. This file demonstrates:
 
+- **Multiple Screens** - Landing, Basic Info, Health Info, Senior Screening
 - **Screen Widget** - Top-level container with title and navigation
 - **Form Widget** - Data capture container bound to entity schema
-- **Input Fields** - `TextField`, `NumberField` with labels and placeholders
-- **Action Buttons** - Primary and secondary actions (`submit_customer`, `cancel`)
+- **Input Fields** - `TextField`, `NumberField`, `BooleanField` with labels and placeholders
+- **Conditional Visibility** - Fields shown/hidden based on form values using `visible` property
+- **Action Buttons** - Primary and secondary actions for navigation and submission
 - **Text Display** - Headline text with styling options
-- **Logging** - Debug logging using `log()` and `logInfo()`
 
-**Example:**
-```hetu
-final screen = Screen(
-  id: 'customer_registration',
-  title: 'Customer Registration',
-  children: [
-    Text(
-      text: 'Customer Registration Sample App',
-      style: 'headline',
-      align: 'center',
-    ),
-    Form(
-      entity: 'Customer',
-      fields: [
-        TextField(
-          field: 'name',
-          label: 'Full Name',
-          required: true,
-        ),
-      ],
-    ),
-  ],
-);
+**Example with Conditional Visibility:**
+```yaml
+patientHealthInfo:
+  widgetType: Screen
+  id: patient_health_info
+  title: Health Information
+  children:
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: BooleanField
+          field: pregnant
+          label: Pregnant?
+          required: true
+          visible: "age > 16 && gender == 'Female'"
 ```
 
-### `workflows.ht` - Workflow Definitions
+**Key Features:**
+- **Conditional Visibility**: Use `visible` property with Hetu expressions to show/hide fields
+- **Multi-Screen Forms**: Forms span multiple screens, maintaining state across navigation
+- **Branching Logic**: Different screens shown based on patient age and gender
 
-Defines multi-step workflows and transitions. This file demonstrates:
+### `workflows.yaml` - Workflow Definitions
+
+Defines multi-step workflows and conditional transitions in YAML format. This file demonstrates:
 
 - **Workflow Structure** - Workflow ID, label, initial step
 - **Step Definitions** - Step ID, label, associated screen, next steps
+- **Conditional Transitions** - Steps shown based on conditions (e.g., age > 50)
 - **Workflow Transitions** - Step-to-step navigation paths
-- **Multiple Workflows** - Customer registration and inspection workflows
 
 **Example:**
-```hetu
-final customerRegistrationWorkflow = {
-  workflowType: 'Workflow',
-  id: 'customer_registration',
-  label: 'Customer Registration',
-  initialStep: 'personal_info',
-  steps: {
-    personal_info: {
-      stepType: 'WorkflowStep',
-      id: 'personal_info',
-      label: 'Personal Information',
-      screenId: 'customer_registration',
-      nextSteps: ['review'],
-    },
-  },
-};
+```yaml
+workflows:
+  patient_registration:
+    id: patient_registration
+    label: Patient Registration
+    initialStep: landing
+    steps:
+      health_info:
+        id: health_info
+        label: Health Information
+        screenId: patient_health_info
+        nextSteps:
+          - senior_screening
+          - complete
+        conditions:
+          senior_screening: "age > 50"
+          complete: "age <= 50"
 ```
 
 ### `rules.ht` - Business Rules and Validation
 
 Defines validation rules and conditional business logic. This file demonstrates:
 
-- **Validation Rules** - Field-level validation (email required, age range, email format)
-- **Business Rules** - Conditional logic (phone formatting, discount calculation)
+- **Validation Rules** - Field-level validation (required fields, age range, email format)
+- **Conditional Validation** - Rules that apply based on other field values
+- **Business Rules** - Conditional logic (age calculation, phone formatting)
 - **Rule Structure** - Rule ID, name, condition expression, action expression
 - **Rule Grouping** - Organized into `validationRules` and `businessRules` maps
 
 **Example:**
 ```hetu
 final validationRules = {
-  email_required: {
+  pregnant_required_female_over_16: {
     ruleType: 'Rule',
-    id: 'email_required',
-    name: 'Email Required',
-    condition: 'context.field == "email" && context.value == null',
-    action: 'showError("Email is required")',
+    id: 'pregnant_required_female_over_16',
+    name: 'Pregnant Required for Females Over 16',
+    condition: 'context.field == "pregnant" && context.formValues["age"] != null && context.formValues["age"] > 16 && context.formValues["gender"] == "Female" && context.value == null',
+    action: 'showError("Pregnant status is required for females over 16")',
   },
 };
+```
+
+### `actions.ht` - Action Handlers
+
+Defines action functions for navigation and form submission. This file demonstrates:
+
+- **Navigation Actions** - Multi-step form navigation with validation
+- **Conditional Navigation** - Skip steps based on patient age
+- **Form Submission** - Save patient data to database
+- **Validation** - Field validation before navigation/submission
+
+**Example:**
+```hetu
+fun next_to_senior_screening() {
+  final formValues = actionContext.formValues ?? {}
+  final age = formValues['age']
+  final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
+  
+  if (ageValue != null && ageValue > 50) {
+    // Navigate to senior screening
+  } else {
+    // Skip and submit directly
+    submit_patient()
+  }
+}
 ```
 
 ## Running the Sample App
@@ -159,14 +200,15 @@ final validationRules = {
    ```bash
    ./scripts/start_dev_server.sh
    ```
+   This script automatically copies all files from `sample_app/assets` to `server/assets`.
 
 2. **Configure the container app** to fetch assets from the development server
 
 3. **Launch the container app** - It will automatically:
-   - Fetch `schema.ht`, `ui.ht`, `workflows.ht`, and `rules.ht` from the server
-   - Parse schemas and create database tables
-   - Load workflows and rules into the interpreter
-   - Parse UI and render the customer registration form
+   - Fetch `schema.yaml`, `ui.yaml`, `workflows.yaml`, `rules.ht`, and `actions.ht` from the server
+   - Parse schemas (OpenAPI format) and create database tables
+   - Load workflows (YAML format) and rules into the interpreter
+   - Parse UI and render the patient registration screens
 
 ### Expected Behavior
 
@@ -178,158 +220,137 @@ When the app loads, you should see:
    - Initializing database
    - Loading workflows
    - Loading rules
+   - Loading actions
    - Loading UI
 
-2. **Customer Registration Form** - A form with:
-   - Headline text: "Customer Registration Sample App"
-   - Form fields:
-     - Full Name (required)
-     - Email Address (required)
-     - Age (integer, optional)
-     - Phone Number (optional)
-   - Action buttons:
-     - Register (primary)
-     - Cancel (secondary)
+2. **Landing Screen** - Welcome screen with "Capture New Patient" button
+
+3. **Basic Information Screen** - Form with:
+   - First Name (required)
+   - Last Name (required)
+   - Date of Birth
+   - Age (required, integer)
+   - Gender (required)
+   - Email Address
+   - Phone Number
+   - "Next" button
+
+4. **Health Information Screen** - Form with:
+   - Weight (decimal)
+   - Height (decimal)
+   - Pregnant? (boolean, required, **only visible if age > 16 and gender == 'Female'**)
+   - "Next" button
+
+5. **Senior Screening Screen** (conditional) - **Only shown if age > 50**:
+   - Prostate Healthy? (boolean, required, **only visible if age > 50 and gender == 'Male'**)
+   - "Submit Patient" button
 
 ## Key Concepts Demonstrated
 
-### 1. Schema-Driven UI
+### 1. Conditional Field Visibility
 
-The UI is automatically generated from the schema definition. Fields in `schema.ht` correspond to form fields in `ui.ht`. The `Form` widget's `entity: 'Customer'` property binds to the `customerSchema` definition.
+Fields can be shown or hidden based on form values using the `visible` property with Hetu expressions:
 
-### 2. Interpreter State Sharing
+```yaml
+- widgetType: BooleanField
+  field: pregnant
+  label: Pregnant?
+  required: true
+  visible: "age > 16 && gender == 'Female'"
+```
 
-All `.ht` files are loaded into the **same Hetu interpreter instance**, allowing:
+The visibility expression is evaluated reactively as form values change, using `ValueListenableBuilder` to update the UI.
 
-- UI scripts to reference schemas
-- Action handlers to access workflows and rules
-- Rules to evaluate against form context
-- Workflows to transition between screens
+### 2. Multi-Screen Forms
 
-This is achieved through:
-- `ContainerAppShell` creates a single interpreter
-- `VlinderRuntime` receives the shared interpreter
-- `HetuInterpreterProvider` makes the interpreter available to widgets
-- Action handlers access the interpreter from context
+Forms can span multiple screens while maintaining state. The same `entity: Patient` is used across screens, and form state persists as users navigate between screens.
 
-### 3. Logging Integration
+### 3. Branching Logic
 
-The sample app demonstrates debug logging:
+The workflow demonstrates conditional navigation:
+- Patients over 50 see the Senior Screening screen
+- Patients 50 or under skip directly to completion
+- Gender-specific fields appear based on age and gender values
 
-- `log()` - DEBUG level logging
-- `logInfo()` - INFO level logging
-- `logWarning()` - WARNING level logging
-- `logError()` - ERROR level logging
+### 4. All Primitive Types
 
-Logs are captured during script evaluation and sent to the debug logger, which can forward them to a remote log server.
+The Patient schema demonstrates all JSON Schema primitive types:
+- **string**: firstName, lastName, gender, email, phone
+- **integer**: id, age
+- **number** (decimal): weight, height
+- **boolean**: pregnant, prostateHealthy
+- **date-time**: dateOfBirth, createdAt
 
-### 4. Widget Function Calls
+### 5. Conditional Required Fields
 
-Widget constructors (`Screen`, `Form`, `TextField`, etc.) are defined as Hetu functions that return structs. The UI parser:
+Fields can be conditionally required:
+- `pregnant` is required for females over 16
+- `prostateHealthy` is required for males over 50
 
-1. Evaluates the Hetu script
-2. Fetches the `screen` variable
-3. Parses the HTStruct into a `ParsedWidget` tree
-4. Builds Flutter widgets using the `WidgetRegistry`
-
-### 5. Validation and Rules
-
-Validation rules are defined declaratively in `rules.ht`:
-
-- Conditions are Hetu expressions evaluated at runtime
-- Actions are Hetu function calls or expressions
-- Rules can access form context (`context.field`, `context.value`)
-- Rules are evaluated when form fields change
+This is enforced both in validation rules and in action handlers.
 
 ## Extending the Sample App
 
-### Adding a New Field
+### Adding a New Conditional Field
 
-1. **Update `schema.ht`:**
-   ```hetu
-   fields: {
-     // ... existing fields ...
-     newField: {
-       type: 'text',
-       required: false,
-       constraints: {
-         maxLength: 50,
-       },
-     },
-   }
+1. **Update `schema.yaml`** to add the field to the Patient schema
+
+2. **Update `ui.yaml`** to add the field with conditional visibility:
+   ```yaml
+   - widgetType: BooleanField
+     field: newField
+     label: New Field
+     required: true
+     visible: "age > 18 && gender == 'Male'"
    ```
 
-2. **Update `ui.ht`:**
-   ```hetu
-   Form(
-     entity: 'Customer',
-     fields: [
-       // ... existing fields ...
-       TextField(
-         field: 'newField',
-         label: 'New Field',
-         placeholder: 'Enter value',
-       ),
-     ],
-   )
+3. **Update `rules.ht`** to add validation rules if needed
+
+### Adding a New Screen
+
+1. **Add screen definition to `ui.yaml`**:
+   ```yaml
+   newScreen:
+     widgetType: Screen
+     id: new_screen
+     title: New Screen
+     children:
+       # ... widgets ...
    ```
 
-### Adding a New Validation Rule
-
-1. **Update `rules.ht`:**
-   ```hetu
-   final validationRules = {
-     // ... existing rules ...
-     newField_validation: {
-       ruleType: 'Rule',
-       id: 'newField_validation',
-       name: 'New Field Validation',
-       condition: 'context.field == "newField" && context.value.length < 3',
-       action: 'showError("Field must be at least 3 characters")',
-     },
-   };
+2. **Update `workflows.yaml`** to add the step:
+   ```yaml
+   new_step:
+     id: new_step
+     label: New Step
+     screenId: new_screen
+     nextSteps:
+       - complete
    ```
 
-### Adding a New Workflow Step
-
-1. **Update `workflows.ht`:**
-   ```hetu
-   steps: {
-     // ... existing steps ...
-     new_step: {
-       stepType: 'WorkflowStep',
-       id: 'new_step',
-       label: 'New Step',
-       screenId: 'new_screen',
-       nextSteps: ['complete'],
-     },
-   }
-   ```
-
-2. **Create corresponding UI in `ui.ht`** with `id: 'new_screen'`
+3. **Add navigation action to `actions.ht`** if needed
 
 ## Troubleshooting
 
-### UI Not Loading
+### Conditional Fields Not Showing/Hiding
 
-- Check that all `.ht` files are present in `assets/` directory
-- Verify the development server is running and serving files
-- Check Flutter console for parsing errors
-- Ensure schemas are loaded before UI parsing
+- Verify the `visible` expression syntax is correct Hetu script
+- Check that form values are being set correctly (age, gender, etc.)
+- Ensure `HetuInterpreterProvider` is available in the widget tree
+- Check Flutter console for visibility evaluation errors
+
+### Multi-Screen Form State Lost
+
+- Ensure all screens use the same `entity: Patient`
+- Verify form state is being passed between screens
+- Check that navigation actions preserve form state
 
 ### Validation Rules Not Firing
 
 - Verify rules are loaded into the interpreter (check logs)
 - Ensure rule conditions are valid Hetu expressions
 - Check that form context is properly injected
-- Verify action handlers have access to the interpreter
-
-### Database Errors
-
-- Ensure schemas are loaded before database initialization
-- Check that field types match Drift-supported types
-- Verify primary key is defined correctly
-- Check for table name conflicts
+- Verify conditional required fields match the visibility conditions
 
 ## Related Documentation
 
@@ -339,10 +360,8 @@ Validation rules are defined declaratively in `rules.ht`:
 
 ## Next Steps
 
-- Explore the Vlinder Widget SDK to see available widgets
-- Review workflow engine capabilities
-- Study rule evaluation patterns
+- Explore conditional visibility patterns for complex forms
+- Review workflow engine capabilities for branching logic
+- Study rule evaluation patterns for conditional validation
 - Experiment with different field types and constraints
-- Build your own custom workflows and rules
-
-
+- Build your own custom workflows with conditional transitions

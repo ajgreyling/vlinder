@@ -11,10 +11,10 @@ This implementation provides a Hetu script-based UI composition system for Flutt
 - Ensures only SDK widgets can be instantiated (App Store safety)
 - Provides conversion utilities from Hetu HTValue to Dart types
 
-### 2. Hetu Parser (`lib/vlinder/parser/ui_parser.dart`)
-- Parses `ui.ht` files using Hetu interpreter
-- Extracts widget tree structure from Hetu script
-- Converts Hetu values to parsed widget definitions
+### 2. YAML UI Parser (`lib/vlinder/parser/yaml_ui_parser.dart`)
+- Parses `ui.yaml` files (YAML format)
+- Extracts widget tree structure from YAML
+- Converts YAML structure to parsed widget definitions
 - Builds Flutter widget trees recursively
 
 ### 3. Drift Binding (`lib/vlinder/binding/drift_binding.dart`)
@@ -32,7 +32,7 @@ This implementation provides a Hetu script-based UI composition system for Flutt
 
 ### 5. Runtime Engine (`lib/vlinder/runtime/vlinder_runtime.dart`)
 - Coordinates parser, factory, and binding layers
-- Loads and executes `ui.ht` files
+- Loads and parses `ui.yaml` files (YAML format)
 - Registers all SDK widgets
 - Provides error handling
 
@@ -45,56 +45,51 @@ final runtime = VlinderRuntime();
 final uiWidget = runtime.loadUI(scriptContent, context);
 ```
 
-## Hetu Script Format
+## YAML UI Format
 
-The `ui.ht` file should define widgets using Hetu's function call syntax:
+The `ui.yaml` file should define widgets using YAML syntax:
 
-```hetu
-final screen = Screen(
-  id: 'customer_form',
-  title: 'Customer Registration',
-  children: [
-    Form(
-      entity: 'Customer',
-      fields: [
-        TextField(
-          field: 'name',
-          label: 'Customer Name',
-          required: true,
-        ),
-        NumberField(
-          field: 'age',
-          label: 'Age',
-          type: 'integer',
-        ),
-      ],
-    ),
-    ActionButton(
-      label: 'Submit',
-      action: 'submit_customer',
-    ),
-  ],
-);
+```yaml
+screen:
+  widgetType: Screen
+  id: customer_form
+  title: Customer Registration
+  children:
+    - widgetType: Form
+      entity: Customer
+      fields:
+        - widgetType: TextField
+          field: name
+          label: Customer Name
+          required: true
+        - widgetType: NumberField
+          field: age
+          label: Age
+          type: integer
+    - widgetType: ActionButton
+      label: Submit
+      action: submit_customer
 ```
 
 ## Current Limitations
 
-1. **Parser**: The current parser uses a simplified approach. A full implementation would parse Hetu's AST to extract widget types more accurately.
+1. **Parser**: The YAML parser converts YAML structure to widget trees. All widgets must have a `widgetType` property.
 
-2. **Schema Loading**: Schema definitions from `schema.ht` are not yet integrated. Forms currently use empty schemas.
+2. **Schema Loading**: Schema definitions from `schema.yaml` (OpenAPI YAML format with `$ref` references) are integrated. Forms bind to entity schemas.
 
-3. **Hetu Script Execution**: Action buttons don't yet execute Hetu scripts for actions. This requires integration with Hetu's function calling mechanism.
+3. **Hetu Script Execution**: Action buttons execute Hetu scripts for actions via ActionHandler integration.
 
-4. **Drift Integration**: While the binding layer is in place, actual Drift database tables are not yet created or used.
+4. **Drift Integration**: The binding layer is integrated with Drift database tables created from schemas.
 
 ## Next Steps
 
-1. Improve Hetu parser to use AST for accurate widget type detection
-2. Implement schema loader for `schema.ht` files
-3. Integrate Hetu script execution for action handlers
-4. Create Drift table definitions from schemas
-5. Add remaining 27 widgets from the SDK
-6. Implement workflow engine (`workflows.ht` parser)
-7. Add rules engine (`rules.ht` parser)
+1. Enhance YAML parser with additional validation and error messages
+2. Add remaining widgets from the SDK (currently ~5 widgets implemented)
+3. Enhance workflow engine capabilities
+4. Expand rules engine functionality
+5. Add UI preview/validation tools
+
+
+
 
 

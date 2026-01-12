@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../vlinder/vlinder.dart';
 import '../vlinder/core/interpreter_provider.dart';
 import '../vlinder/core/database_provider.dart';
+import '../vlinder/core/ui_yaml_provider.dart';
 import '../vlinder/drift/database_api.dart';
 import '../vlinder/drift/database.dart';
 import 'asset_fetcher.dart';
@@ -39,6 +40,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   AssetFetcher? _fetcher;
   
   Widget? _loadedUI;
+  String? _uiYamlContent;
   String? _errorMessage;
   bool _isLoading = true;
   bool _waitingForServerUrl = false;
@@ -400,6 +402,44 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     } catch (e) {
       debugPrint('[ContainerAppShell] Warning: Could not register database functions: $e');
     }
+    
+    // Register navigation function
+    _registerNavigationFunction();
+  }
+  
+  /// Register navigation function in Hetu interpreter
+  /// This function allows .ht files to request navigation to a screen
+  void _registerNavigationFunction() {
+    debugPrint('[ContainerAppShell] Registering navigation function in Hetu interpreter...');
+    
+    // Check if function is already defined to avoid redefinition errors
+    try {
+      _interpreter.fetch('navigate');
+      debugPrint('[ContainerAppShell] Navigation function already defined, skipping registration');
+      return;
+    } catch (_) {
+      // Function doesn't exist, proceed with definition
+    }
+
+    // Create navigation function that stores navigation request
+    // Navigation requests are processed by ActionHandler after action execution
+    final navigationScript = '''
+      // Navigation request queue - stores pending navigation requests
+      var _navigationRequest = null
+      
+      // Navigate to a screen by ID
+      fun navigate(screenId) {
+        _navigationRequest = screenId
+        logInfo("Navigation requested to screen: " + screenId)
+      }
+    ''';
+
+    try {
+      _interpreter.eval(navigationScript);
+      debugPrint('[ContainerAppShell] Navigation function registered successfully');
+    } catch (e) {
+      debugPrint('[ContainerAppShell] Warning: Could not register navigation function: $e');
+    }
   }
   
   @override
@@ -455,29 +495,26 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       });
       Map<String, EntitySchema> schemas;
       try {
-        final schemaContent = assets['schema.ht'] ?? '';
-        final schemaLoader = SchemaLoader(interpreter: _interpreter);
+        final schemaContent = assets['schema.yaml'] ?? '';
+        final schemaLoader = SchemaLoader();
         schemas = schemaLoader.loadSchemas(schemaContent);
         
         // Update database API with loaded schemas
         _databaseAPI.updateSchemas(schemas);
         
-        // Process any logs from Hetu script execution
-        _processHetuLogs();
-        
         debugPrint('[ContainerAppShell] Loaded ${schemas.length} schemas: ${schemas.keys.join(", ")}');
       } catch (e, stackTrace) {
-        final errorMsg = 'Failed to load schemas from schema.ht: $e';
+        final errorMsg = 'Failed to load schemas from schema.yaml (OpenAPI format): $e';
         debugPrint('[ContainerAppShell] ERROR: $errorMsg');
         debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
-        final schemaContent = assets['schema.ht'] ?? '';
+        final schemaContent = assets['schema.yaml'] ?? '';
         if (schemaContent.isNotEmpty) {
           final preview = schemaContent.length > 200 
               ? schemaContent.substring(0, 200) 
               : schemaContent;
           debugPrint('[ContainerAppShell] Schema content preview: $preview...');
         }
-        throw Exception('Step: Loading schemas - File: schema.ht - $errorMsg');
+        throw Exception('Step: Loading schemas - File: schema.yaml (OpenAPI format) - $errorMsg');
       }
 
       // Initialize database with schemas
@@ -515,26 +552,23 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         _currentStep = LoadingStep.loadingWorkflows;
       });
       try {
-        final workflowContent = assets['workflows.ht'] ?? '';
-        final workflowParser = WorkflowParser(interpreter: _interpreter);
+        final workflowContent = assets['workflows.yaml'] ?? '';
+        final workflowParser = WorkflowParser();
         workflowParser.loadWorkflows(workflowContent);
-        
-        // Process any logs from Hetu script execution
-        _processHetuLogs();
         
         debugPrint('[ContainerAppShell] Workflows loaded');
       } catch (e, stackTrace) {
-        final errorMsg = 'Failed to load workflows from workflows.ht: $e';
+        final errorMsg = 'Failed to load workflows from workflows.yaml: $e';
         debugPrint('[ContainerAppShell] ERROR: $errorMsg');
         debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
-        final workflowContent = assets['workflows.ht'] ?? '';
+        final workflowContent = assets['workflows.yaml'] ?? '';
         if (workflowContent.isNotEmpty) {
           final preview = workflowContent.length > 200 
               ? workflowContent.substring(0, 200) 
               : workflowContent;
           debugPrint('[ContainerAppShell] Workflow content preview: $preview...');
         }
-        throw Exception('Step: Loading workflows - File: workflows.ht - $errorMsg');
+        throw Exception('Step: Loading workflows - File: workflows.yaml - $errorMsg');
       }
 
       // Load rules
@@ -586,17 +620,8 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         // Process any logs from Hetu script execution
         _processHetuLogs();
         
-        // Verify that submit_customer function was registered
-        try {
-          final func = _interpreter.fetch('submit_customer');
-          debugPrint('[ContainerAppShell] submit_customer function registered successfully');
-        } catch (e) {
-          final errorMsg = 'submit_customer function not found after loading actions.ht: $e';
-          debugPrint('[ContainerAppShell] ERROR: $errorMsg');
-          debugPrint('[ContainerAppShell] This may indicate a syntax error in actions.ht or the function was not defined');
-          throw Exception('Step: Loading actions - File: actions.ht - $errorMsg');
-        }
-        
+        // Actions script loaded successfully (eval() validates syntax)
+        // Action functions are now registered and available for use
         debugPrint('[ContainerAppShell] Actions loaded successfully');
       } catch (e, stackTrace) {
         // Re-throw if it's our own exception, otherwise wrap it
@@ -622,17 +647,21 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         _currentStep = LoadingStep.loadingUI;
       });
       try {
-        final uiContent = assets['ui.ht'] ?? '';
+        final uiContent = assets['ui.yaml'] ?? '';
         if (uiContent.isEmpty) {
           debugPrint('[ContainerAppShell] ERROR: No UI content found in assets');
-          throw Exception('Step: Loading UI - File: ui.ht - No UI content found');
+          throw Exception('Step: Loading UI - File: ui.yaml - No UI content found');
         }
+
+        // Store UI YAML content for later use in navigation
+        _uiYamlContent = uiContent;
+        debugPrint('[ContainerAppShell] Stored UI YAML content (${uiContent.length} characters)');
 
         final loadedWidget = _runtime.loadUI(uiContent, context);
         
         if (loadedWidget == null) {
           debugPrint('[ContainerAppShell] ERROR: loadUI returned null widget!');
-          throw Exception('Step: Loading UI - File: ui.ht - loadUI returned null widget');
+          throw Exception('Step: Loading UI - File: ui.yaml - loadUI returned null widget');
         }
 
         setState(() {
@@ -646,17 +675,17 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         if (e.toString().contains('Step: Loading UI')) {
           rethrow;
         }
-        final errorMsg = 'Failed to load UI from ui.ht: $e';
+        final errorMsg = 'Failed to load UI from ui.yaml: $e';
         debugPrint('[ContainerAppShell] ERROR: $errorMsg');
         debugPrint('[ContainerAppShell] Stack trace: $stackTrace');
-        final uiContent = assets['ui.ht'] ?? '';
+        final uiContent = assets['ui.yaml'] ?? '';
         if (uiContent.isNotEmpty) {
           final preview = uiContent.length > 300 
               ? uiContent.substring(0, 300) 
               : uiContent;
           debugPrint('[ContainerAppShell] UI content preview: $preview...');
         }
-        throw Exception('Step: Loading UI - File: ui.ht - $errorMsg');
+        throw Exception('Step: Loading UI - File: ui.yaml - $errorMsg');
       }
     } catch (e, stackTrace) {
       final errorMsg = e.toString();
@@ -722,13 +751,16 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       return _buildLandingScreen();
     }
 
-    // If UI is loaded, wrap it with providers so widgets can access the interpreter and database
-    if (!_isLoading && _loadedUI != null && _errorMessage == null) {
+    // If UI is loaded, wrap it with providers so widgets can access the interpreter, database, and UI YAML
+    if (!_isLoading && _loadedUI != null && _errorMessage == null && _uiYamlContent != null) {
       return DatabaseAPIProvider(
         databaseAPI: _databaseAPI,
         child: HetuInterpreterProvider(
           interpreter: _interpreter,
-          child: _loadedUI!,
+          child: UIYAMLProvider(
+            uiYamlContent: _uiYamlContent!,
+            child: _loadedUI!,
+          ),
         ),
       );
     }
@@ -928,7 +960,7 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
     }
   }
 
-  /// Build landing screen with Link button
+  /// Build landing screen with Link button and manual input
   Widget _buildLandingScreen() {
     return Scaffold(
       body: Container(
@@ -944,58 +976,90 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
         ),
         child: SafeArea(
           child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // App Icon/Logo placeholder
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      Icons.apps,
-                      size: 48,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  // App Title
-                  Text(
-                    'Vlinder Container',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Instructions
-                  Text(
-                    'Scan the QR code to link with your server',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                  const SizedBox(height: 48),
-                  // Link button
-                  ElevatedButton.icon(
-                    onPressed: () => _showQRScanner(),
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Link'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 16,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // App Icon/Logo placeholder
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      textStyle: Theme.of(context).textTheme.titleLarge,
+                      child: Icon(
+                        Icons.apps,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 32),
+                    // App Title
+                    Text(
+                      'Vlinder Container',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Instructions
+                    Text(
+                      'Link with your server',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 48),
+                    // Manual URL input
+                    _ManualUrlInput(
+                      onConnect: (url) => _handleQRCodeScan(url),
+                    ),
+                    const SizedBox(height: 24),
+                    // Divider with "OR"
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Divider(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Divider(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    // Link with QR button
+                    ElevatedButton.icon(
+                      onPressed: () => _showQRScanner(),
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Link with QR Code'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                        textStyle: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1016,6 +1080,94 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
   }
 }
 
+/// Manual URL Input Widget
+class _ManualUrlInput extends StatefulWidget {
+  final Function(String?) onConnect;
+
+  const _ManualUrlInput({required this.onConnect});
+
+  @override
+  State<_ManualUrlInput> createState() => _ManualUrlInputState();
+}
+
+class _ManualUrlInputState extends State<_ManualUrlInput> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  bool _isConnecting = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleConnect() {
+    final url = _controller.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a server URL'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isConnecting = true;
+    });
+
+    widget.onConnect(url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          decoration: InputDecoration(
+            labelText: 'Server URL',
+            hintText: 'https://example.com',
+            prefixIcon: const Icon(Icons.link),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surface,
+          ),
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _handleConnect(),
+          enabled: !_isConnecting,
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          onPressed: _isConnecting ? null : _handleConnect,
+          icon: _isConnecting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.connect_without_contact),
+          label: Text(_isConnecting ? 'Connecting...' : 'Connect'),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 32,
+              vertical: 16,
+            ),
+            textStyle: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// QR Code Scanner Screen
 class _QRScannerScreen extends StatefulWidget {
   final Function(String?) onScan;
@@ -1028,11 +1180,34 @@ class _QRScannerScreen extends StatefulWidget {
 
 class _QRScannerScreenState extends State<_QRScannerScreen> {
   final MobileScannerController _controller = MobileScannerController();
+  final TextEditingController _urlController = TextEditingController();
+  bool _showManualInput = false;
 
   @override
   void dispose() {
     _controller.dispose();
+    _urlController.dispose();
     super.dispose();
+  }
+
+  void _handleManualConnect() {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a server URL'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Stop scanning
+    _controller.stop();
+    // Process the URL
+    widget.onScan(url);
+    // Navigate back
+    Navigator.of(context).pop();
   }
 
   @override
@@ -1041,64 +1216,138 @@ class _QRScannerScreenState extends State<_QRScannerScreen> {
       appBar: AppBar(
         title: const Text('Scan QR Code'),
         backgroundColor: Colors.black,
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: (capture) {
-              final List<Barcode> barcodes = capture.barcodes;
-              if (barcodes.isNotEmpty) {
-                final barcode = barcodes.first;
-                if (barcode.rawValue != null) {
-                  // Stop scanning
+        actions: [
+          IconButton(
+            icon: Icon(_showManualInput ? Icons.qr_code_scanner : Icons.edit),
+            tooltip: _showManualInput ? 'Show Scanner' : 'Enter URL Manually',
+            onPressed: () {
+              setState(() {
+                _showManualInput = !_showManualInput;
+                if (_showManualInput) {
                   _controller.stop();
-                  // Process the scanned code
-                  widget.onScan(barcode.rawValue);
-                  // Navigate back
-                  Navigator.of(context).pop();
+                } else {
+                  _controller.start();
                 }
-              }
+              });
             },
           ),
-          // Overlay with scanning area indicator
-          Center(
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white,
-                  width: 2,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-          // Instructions
-          Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Position the QR code within the frame',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          offset: const Offset(0, 1),
-                          blurRadius: 3,
-                          color: Colors.black.withOpacity(0.8),
-                        ),
-                      ],
-                    ),
-              ),
-            ),
-          ),
         ],
+      ),
+      body: _showManualInput
+          ? _buildManualInputView()
+          : _buildScannerView(),
+    );
+  }
+
+  Widget _buildScannerView() {
+    return Stack(
+      children: [
+        MobileScanner(
+          controller: _controller,
+          onDetect: (capture) {
+            final List<Barcode> barcodes = capture.barcodes;
+            if (barcodes.isNotEmpty) {
+              final barcode = barcodes.first;
+              if (barcode.rawValue != null) {
+                // Stop scanning
+                _controller.stop();
+                // Process the scanned code
+                widget.onScan(barcode.rawValue);
+                // Navigate back
+                Navigator.of(context).pop();
+              }
+            }
+          },
+        ),
+        // Overlay with scanning area indicator
+        Center(
+          child: Container(
+            width: 250,
+            height: 250,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        // Instructions
+        Positioned(
+          bottom: 100,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Position the QR code within the frame',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        offset: const Offset(0, 1),
+                        blurRadius: 3,
+                        color: Colors.black.withOpacity(0.8),
+                      ),
+                    ],
+                  ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualInputView() {
+    return Container(
+      color: Colors.black,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.link,
+                size: 64,
+                color: Colors.white,
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _urlController,
+                decoration: InputDecoration(
+                  labelText: 'Server URL',
+                  hintText: 'https://example.com',
+                  prefixIcon: const Icon(Icons.link),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _handleManualConnect(),
+                style: const TextStyle(color: Colors.black),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _handleManualConnect,
+                icon: const Icon(Icons.connect_without_contact),
+                label: const Text('Connect'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                  textStyle: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

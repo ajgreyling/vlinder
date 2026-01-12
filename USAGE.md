@@ -16,10 +16,10 @@ This will:
 
 ### 2. Add Your .ht Files
 
-Place your Hetu script files in `server/assets/`:
-- `ui.ht` - UI definitions
-- `schema.ht` - Entity schemas
-- `workflows.ht` - Workflow definitions
+Place your Hetu script files and schema definition in `server/assets/`:
+- `ui.yaml` - UI definitions (YAML format)
+- `schema.yaml` - Entity schemas in OpenAPI YAML format with `$ref` references for relationships
+- `workflows.yaml` - Workflow definitions (YAML format)
 - `rules.ht` - Business rules
 
 ### 3. Build Container App
@@ -39,35 +39,36 @@ The build script will:
 
 ## Development Workflow
 
-1. **Edit .ht files** in `server/assets/` or `sample_app/assets/`
+1. **Edit .ht and .yaml files** in `server/assets/` or `sample_app/assets/`
 2. **Start server** with `./scripts/start_dev_server.sh`
 3. **Build app** with the ngrok URL
 4. **Test on device** - app will fetch .ht files from server
-5. **Update .ht files** - changes are immediately available (no rebuild needed)
+5. **Update .ht and .yaml files** - changes are immediately available (no rebuild needed)
 
 ## Sample App
 
-The `sample_app/assets/` directory contains example .ht files demonstrating:
+The `sample_app/assets/` directory contains example files demonstrating:
 - Form with validation
 - Multi-step workflow
 - Business rules
-- Schema definitions
+- Schema definitions in OpenAPI YAML format with `$ref` references (`schema.yaml`)
 
 Copy these to `server/assets/` to test:
 
 ```bash
 cp sample_app/assets/*.ht server/assets/
+cp sample_app/assets/*.yaml server/assets/
 ```
 
 ## Container App Features
 
 The container app (`lib/container/app_shell.dart`):
-- Fetches .ht files from server on startup
+- Fetches .ht files and .yaml files from server on startup
 - Caches assets locally for offline use
 - Automatically falls back to cache if server unavailable
-- Loads schemas, workflows, and rules
+- Loads schemas (OpenAPI YAML format with `$ref` references), workflows, and rules
 - Initializes Drift database from schemas
-- Renders UI from ui.ht
+- Renders UI from ui.yaml (YAML format)
 
 ## Configuration
 
@@ -90,7 +91,7 @@ Server URL is configured in `lib/container/config.dart`:
 
 ### App can't fetch assets
 - Verify ngrok URL is correct
-- Check server is running: `curl http://localhost:8000/ui.ht`
+- Check server is running: `curl http://localhost:8000/ui.yaml`
 - Verify CORS headers (server includes CORS support)
 - Check device has internet connection
 
@@ -98,5 +99,8 @@ Server URL is configured in `lib/container/config.dart`:
 - Ensure Flutter is installed and configured
 - Check all dependencies: `flutter pub get`
 - Verify ngrok URL is valid
+
+
+
 
 

@@ -1,0 +1,135 @@
+# Patient Registration UI - Multi-screen form with branching logic
+# Demonstrates conditional field visibility and multi-step workflows
+
+# Screen 1: Landing Screen
+patientLanding:
+  widgetType: Screen
+  id: patient_landing
+  title: Patient Registration
+  children:
+    - widgetType: Text
+      text: Patient Registration System
+      style: headline
+      align: center
+      padding: 24.0
+    - widgetType: Text
+      text: Welcome to the Patient Registration System. Click the button below to start registering a new patient.
+      style: body
+      align: center
+      padding: 16.0
+    - widgetType: ActionButton
+      label: Capture New Patient
+      action: start_registration
+      style: primary
+
+# Screen 2: Basic Information
+patientBasicInfo:
+  widgetType: Screen
+  id: patient_basic_info
+  title: Basic Information
+  children:
+    - widgetType: Text
+      text: Please provide the patient's basic information
+      style: body
+      align: center
+      padding: 16.0
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: TextField
+          field: firstName
+          label: First Name
+          required: true
+          placeholder: Enter first name
+        - widgetType: TextField
+          field: lastName
+          label: Last Name
+          required: true
+          placeholder: Enter last name
+        - widgetType: TextField
+          field: dateOfBirth
+          label: Date of Birth
+          placeholder: YYYY-MM-DD
+        - widgetType: NumberField
+          field: age
+          label: Age
+          type: integer
+          required: true
+          placeholder: Enter age
+        - widgetType: TextField
+          field: gender
+          label: Gender
+          required: true
+          placeholder: Male, Female, or Other
+        - widgetType: TextField
+          field: email
+          label: Email Address
+          placeholder: patient@example.com
+        - widgetType: TextField
+          field: phone
+          label: Phone Number
+          placeholder: "+1234567890"
+    - widgetType: ActionButton
+      label: Next
+      action: next_to_health_info
+      style: primary
+
+# Screen 3: Health Information
+patientHealthInfo:
+  widgetType: Screen
+  id: patient_health_info
+  title: Health Information
+  children:
+    - widgetType: Text
+      text: Please provide the patient's health information
+      style: body
+      align: center
+      padding: 16.0
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: NumberField
+          field: weight
+          label: Weight (kg)
+          type: decimal
+          placeholder: Enter weight in kg
+        - widgetType: NumberField
+          field: height
+          label: Height (cm)
+          type: decimal
+          placeholder: Enter height in cm
+        - widgetType: BooleanField
+          field: pregnant
+          label: Pregnant?
+          required: true
+          placeholder: Select Yes or No
+          visible: "age > 16 && gender == 'Female'"
+    - widgetType: ActionButton
+      label: Next
+      action: next_to_senior_screening
+      style: primary
+
+# Screen 4: Senior Screening (Conditional - only for patients over 50)
+patientSeniorScreening:
+  widgetType: Screen
+  id: patient_senior_screening
+  title: Senior Health Screening
+  children:
+    - widgetType: Text
+      text: Additional health screening for patients over 50
+      style: body
+      align: center
+      padding: 16.0
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: BooleanField
+          field: prostateHealthy
+          label: Prostate Healthy?
+          required: true
+          placeholder: Select Yes or No
+          visible: "age > 50 && gender == 'Male'"
+    - widgetType: ActionButton
+      label: Submit Patient
+      action: submit_patient
+      style: primary

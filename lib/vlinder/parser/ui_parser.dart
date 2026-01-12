@@ -95,7 +95,7 @@ class UIParser {
         return result
       }
       
-      fun TextField({field, label, required, placeholder, readOnly}) {
+      fun TextField({field, label, required, placeholder, readOnly, visible}) {
         final result = {
           widgetType: 'TextField',
           field: field,
@@ -103,11 +103,12 @@ class UIParser {
           required: (required != null) ? required : false,
           placeholder: placeholder,
           readOnly: (readOnly != null) ? readOnly : false,
+          visible: visible,
         }
         return result
       }
       
-      fun NumberField({field, label, type, required, placeholder, readOnly}) {
+      fun NumberField({field, label, type, required, placeholder, readOnly, visible}) {
         final result = {
           widgetType: 'NumberField',
           field: field,
@@ -116,6 +117,20 @@ class UIParser {
           required: (required != null) ? required : false,
           placeholder: placeholder,
           readOnly: (readOnly != null) ? readOnly : false,
+          visible: visible,
+        }
+        return result
+      }
+      
+      fun BooleanField({field, label, required, placeholder, readOnly, visible}) {
+        final result = {
+          widgetType: 'BooleanField',
+          field: field,
+          label: label,
+          required: (required != null) ? required : false,
+          placeholder: placeholder,
+          readOnly: (readOnly != null) ? readOnly : false,
+          visible: visible,
         }
         return result
       }

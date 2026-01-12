@@ -22,12 +22,17 @@ class EntitySchema {
   final String name;
   final Map<String, SchemaField> fields;
   final String? primaryKey;
+  final Map<String, String> relationships; // Maps field names to referenced entity names (from $ref)
+  final Map<String, String> foreignKeys; // Maps field names to foreign key references (from x-foreign-key)
 
   EntitySchema({
     required this.name,
     required this.fields,
     this.primaryKey,
-  });
+    Map<String, String>? relationships,
+    Map<String, String>? foreignKeys,
+  })  : relationships = relationships ?? {},
+        foreignKeys = foreignKeys ?? {};
 
   SchemaField? getField(String fieldName) {
     return fields[fieldName];

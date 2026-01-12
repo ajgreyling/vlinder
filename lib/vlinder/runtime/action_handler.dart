@@ -5,6 +5,10 @@ import '../binding/drift_binding.dart';
 import '../drift/database_api.dart';
 import '../widgets/text_field.dart';
 import '../widgets/number_field.dart';
+import '../core/ui_yaml_provider.dart';
+import '../core/interpreter_provider.dart';
+import '../core/database_provider.dart';
+import 'vlinder_runtime.dart';
 
 /// Handler for executing Hetu script actions
 /// Supports navigation, form submission, and workflow transitions
@@ -128,42 +132,46 @@ class ActionHandler {
         if (databaseAPI != null) {
           await _processDatabaseOperations();
           
-          // After processing database operations, check if we need to navigate to saved customer screen
-          // This happens when submit_customer action completes and we have a saved customer query ID
-          try {
-            final savedCustomerQueryId = interpreter.fetch('_savedCustomerQueryId');
-            if (savedCustomerQueryId != null) {
-              debugPrint('[ActionHandler] Found saved customer query ID: $savedCustomerQueryId');
+          // After processing database operations, check if we need to navigate to saved entity screen
+          // This only happens after submit actions (submit_*, submit) that complete and have a saved query ID
+          // Check if this is a submit action before checking for saved query ID
+          final isSubmitAction = actionName == 'submit' || actionName.startsWith('submit_');
+          
+          if (isSubmitAction) {
+            // Try to get saved query ID (supports both _savedCustomerQueryId and _savedPatientQueryId)
+            final savedQueryId = _getSavedQueryId();
+            if (savedQueryId != null) {
+              debugPrint('[ActionHandler] Found saved query ID: $savedQueryId');
               // Get the query result using getDbResult function
               try {
-                debugPrint('[ActionHandler] Calling getDbResult with operation ID: $savedCustomerQueryId');
-                final queryResult = interpreter.invoke('getDbResult', positionalArgs: [savedCustomerQueryId]);
+                debugPrint('[ActionHandler] Calling getDbResult with operation ID: $savedQueryId');
+                final queryResult = interpreter.invoke('getDbResult', positionalArgs: [savedQueryId]);
                 debugPrint('[ActionHandler] getDbResult returned: $queryResult (type: ${queryResult.runtimeType})');
                 
                 if (queryResult != null) {
-                  debugPrint('[ActionHandler] Loaded saved customer from database: $queryResult');
-                  debugPrint('[ActionHandler] Navigating to saved customer view screen');
+                  debugPrint('[ActionHandler] Loaded saved entity from database: $queryResult');
+                  debugPrint('[ActionHandler] Navigating to saved entity view screen');
                   
                   // Handle List results (findAll returns a List)
-                  dynamic customerData = queryResult;
+                  dynamic entityData = queryResult;
                   if (queryResult is List && queryResult.isNotEmpty) {
-                    customerData = queryResult[0];
-                    debugPrint('[ActionHandler] Extracted first item from list: $customerData');
+                    entityData = queryResult[0];
+                    debugPrint('[ActionHandler] Extracted first item from list: $entityData');
                   }
                   
-                  _navigateToSavedCustomerScreen(customerData);
+                  _navigateToSavedCustomerScreen(entityData);
                   // Clear the query ID so we don't navigate again
-                  interpreter.eval('_savedCustomerQueryId = null');
+                  _clearSavedQueryId();
                 } else {
-                  debugPrint('[ActionHandler] Query result is null for operation ID: $savedCustomerQueryId (type: ${savedCustomerQueryId.runtimeType})');
+                  debugPrint('[ActionHandler] Query result is null for operation ID: $savedQueryId (type: ${savedQueryId.runtimeType})');
                   debugPrint('[ActionHandler] Checking _dbResults directly...');
                   try {
                     final dbResults = interpreter.fetch('_dbResults');
                     debugPrint('[ActionHandler] _dbResults contents: $dbResults');
                     if (dbResults is HTStruct) {
                       debugPrint('[ActionHandler] _dbResults keys: ${dbResults.keys.toList()}');
-                      debugPrint('[ActionHandler] Attempting to access with string key: "${savedCustomerQueryId.toString()}"');
-                      final directAccess = dbResults[savedCustomerQueryId.toString()];
+                      debugPrint('[ActionHandler] Attempting to access with string key: "${savedQueryId.toString()}"');
+                      final directAccess = dbResults[savedQueryId.toString()];
                       debugPrint('[ActionHandler] Direct access result: $directAccess');
                     }
                   } catch (e) {
@@ -174,12 +182,16 @@ class ActionHandler {
                 debugPrint('[ActionHandler] Error getting query result: $e');
                 debugPrint('[ActionHandler] Stack trace: $stackTrace');
               }
+            } else {
+              debugPrint('[ActionHandler] No saved query ID found after submit action - navigation skipped');
             }
-          } catch (e) {
-            // No saved customer query ID or error getting result - ignore
-            debugPrint('[ActionHandler] No saved customer to navigate to: $e');
+          } else {
+            debugPrint('[ActionHandler] Action "$actionName" is not a submit action - skipping saved entity navigation check');
           }
         }
+        
+        // Check for navigation requests after action execution
+        _processNavigationRequest();
         
         return;
       } catch (e, stackTrace) {
@@ -281,6 +293,48 @@ class ActionHandler {
     return buffer.toString();
   }
 
+  /// Safely get saved query ID from interpreter, checking both variable name conventions
+  /// Returns the query ID if found, null otherwise
+  dynamic _getSavedQueryId() {
+    // Try _savedCustomerQueryId first (for customer apps)
+    try {
+      final id = interpreter.fetch('_savedCustomerQueryId');
+      if (id != null) {
+        debugPrint('[ActionHandler] Found _savedCustomerQueryId: $id');
+        return id;
+      }
+    } catch (_) {
+      // Variable doesn't exist, try next one
+    }
+    
+    // Try _savedPatientQueryId (for patient apps)
+    try {
+      final id = interpreter.fetch('_savedPatientQueryId');
+      if (id != null) {
+        debugPrint('[ActionHandler] Found _savedPatientQueryId: $id');
+        return id;
+      }
+    } catch (_) {
+      // Variable doesn't exist, return null
+    }
+    
+    return null;
+  }
+
+  /// Clear saved query ID variables (both naming conventions)
+  void _clearSavedQueryId() {
+    try {
+      interpreter.eval('_savedCustomerQueryId = null');
+    } catch (_) {
+      // Variable doesn't exist, ignore
+    }
+    try {
+      interpreter.eval('_savedPatientQueryId = null');
+    } catch (_) {
+      // Variable doesn't exist, ignore
+    }
+  }
+
   /// Handle string-based actions (navigation, form submission, etc.)
   Future<void> _handleStringAction(String action, Map<String, dynamic>? params) async {
     // Handle common action patterns
@@ -304,6 +358,102 @@ class ActionHandler {
       debugPrint('Navigate to screen: $screenId');
       onNavigation?.call();
     }
+  }
+  
+  /// Process navigation request from Hetu script
+  /// Checks for _navigationRequest variable and navigates if set
+  void _processNavigationRequest() {
+    if (context == null || !context!.mounted) {
+      return;
+    }
+    
+    try {
+      final navigationRequest = interpreter.fetch('_navigationRequest');
+      if (navigationRequest != null && navigationRequest is String) {
+        debugPrint('[ActionHandler] Processing navigation request to screen: $navigationRequest');
+        
+        // Clear the navigation request
+        interpreter.eval('_navigationRequest = null');
+        
+        // Navigate using string-based navigation handler
+        // This will use Navigator.push to navigate to the screen
+        _navigateToScreenById(navigationRequest);
+      }
+    } catch (e) {
+      // No navigation request or error - ignore
+      // This is expected if _navigationRequest is null or doesn't exist
+    }
+  }
+  
+  /// Navigate to a screen by ID using Navigator.push
+  /// Loads the screen from UI YAML and wraps it with necessary providers
+  void _navigateToScreenById(String screenId) {
+    if (context == null || !context!.mounted) {
+      return;
+    }
+    
+    debugPrint('[ActionHandler] Navigating to screen: $screenId');
+    
+    // Get UI YAML content from provider
+    final uiYamlContent = UIYAMLProvider.of(context!);
+    if (uiYamlContent == null || uiYamlContent.isEmpty) {
+      debugPrint('[ActionHandler] ERROR: UI YAML content not available for navigation');
+      _showError('Navigation failed: UI content not available');
+      return;
+    }
+    
+    // Get interpreter from provider (should be available)
+    final hetuInterpreter = HetuInterpreterProvider.of(context!);
+    if (hetuInterpreter == null) {
+      debugPrint('[ActionHandler] ERROR: Hetu interpreter not available for navigation');
+      _showError('Navigation failed: Interpreter not available');
+      return;
+    }
+    
+    // Get database API from provider (optional - may be null)
+    final dbAPI = DatabaseAPIProvider.of(context!);
+    
+    // Create runtime instance with the shared interpreter
+    final runtime = VlinderRuntime(interpreter: hetuInterpreter);
+    
+    // Load the screen from YAML
+    Widget screenWidget;
+    try {
+      screenWidget = runtime.loadScreenById(uiYamlContent, screenId, context!);
+      debugPrint('[ActionHandler] Successfully loaded screen "$screenId"');
+    } catch (e, stackTrace) {
+      debugPrint('[ActionHandler] ERROR: Failed to load screen "$screenId": $e');
+      debugPrint('[ActionHandler] Stack trace: $stackTrace');
+      _showError('Failed to load screen "$screenId": $e');
+      return;
+    }
+    
+    // Wrap the loaded screen with providers so it has access to interpreter and database
+    // Start with the base providers (interpreter and UI YAML)
+    Widget wrappedScreen = HetuInterpreterProvider(
+      interpreter: hetuInterpreter,
+      child: UIYAMLProvider(
+        uiYamlContent: uiYamlContent,
+        child: screenWidget,
+      ),
+    );
+    
+    // Wrap with DatabaseAPIProvider if available
+    if (dbAPI != null) {
+      wrappedScreen = DatabaseAPIProvider(
+        databaseAPI: dbAPI,
+        child: wrappedScreen,
+      );
+    } else {
+      debugPrint('[ActionHandler] WARNING: DatabaseAPI not available, screen may not have database access');
+    }
+    
+    // Navigate to the screen
+    Navigator.of(context!).push(
+      MaterialPageRoute(
+        builder: (context) => wrappedScreen,
+      ),
+    );
   }
 
   /// Navigate to saved customer screen with customer data from database

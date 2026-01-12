@@ -1,104 +1,174 @@
-// Sample Action Definitions - Customer Registration Actions
-// Demonstrates using database API functions from Hetu scripts
+// Patient Registration Action Definitions
+// Demonstrates multi-step form navigation and conditional workflow logic
 
 // Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
-logInfo("Loading action definitions")
+logInfo("Loading patient registration action definitions")
 
-// Global variable to store the query operation ID for the saved customer
-// This will be used by the saved customer screen to load data from the database
-var _savedCustomerQueryId = null
+// Global variable to store the query operation ID for the saved patient
+var _savedPatientQueryId = null
 
-// Submit customer action - saves form data to database using database API
-fun submit_customer() {
-  logInfo("submit_customer action called")
+// Start registration action - navigates to basic info screen
+fun start_registration() {
+  logInfo("start_registration action called")
+  // Navigate to patient basic info screen
+  navigate("patient_basic_info")
+}
+
+// Navigate to health info screen - validates basic info first
+fun next_to_health_info() {
+  logInfo("next_to_health_info action called")
   
   // Access form values from actionContext (injected by ActionHandler)
   final formValues = actionContext.formValues ?? {}
   final isValid = actionContext.isValid ?? false
   
-  // Validate form before saving
+  // Validate required fields for basic info
   if (!isValid) {
-    logError("Form validation failed - cannot submit customer")
+    logError("Form validation failed - cannot proceed to health info")
     return
   }
   
-  logInfo("Form is valid, preparing to save customer data")
+  // Check required fields manually
+  if (formValues['firstName'] == null || formValues['firstName'].toString().isEmpty) {
+    logError("First name is required")
+    return
+  }
+  
+  if (formValues['lastName'] == null || formValues['lastName'].toString().isEmpty) {
+    logError("Last name is required")
+    return
+  }
+  
+  if (formValues['age'] == null) {
+    logError("Age is required")
+    return
+  }
+  
+  if (formValues['gender'] == null || formValues['gender'].toString().isEmpty) {
+    logError("Gender is required")
+    return
+  }
+  
+  logInfo("Basic info validation passed, navigating to health info")
+  // Navigate to health info screen
+  navigate("patient_health_info")
+}
+
+// Navigate to senior screening - validates health info and checks if patient is over 50
+fun next_to_senior_screening() {
+  logInfo("next_to_senior_screening action called")
+  
+  // Access form values from actionContext
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  
+  // Validate form
+  if (!isValid) {
+    logError("Form validation failed - cannot proceed to senior screening")
+    return
+  }
+  
+  // Check if patient is over 50
+  final age = formValues['age']
+  if (age == null) {
+    logError("Age is required to determine if senior screening is needed")
+    return
+  }
+  
+  final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
+  if (ageValue == null) {
+    logError("Invalid age value")
+    return
+  }
+  
+  if (ageValue > 50) {
+    logInfo("Patient is over 50, navigating to senior screening")
+    // Navigate to senior screening screen
+    navigate("patient_senior_screening")
+  } else {
+    logInfo("Patient is under 50, skipping senior screening and submitting")
+    // Skip senior screening and submit directly
+    submit_patient()
+  }
+}
+
+// Submit patient action - saves form data to database
+fun submit_patient() {
+  logInfo("submit_patient action called")
+  
+  // Access form values from actionContext
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  
+  // Validate form before saving
+  if (!isValid) {
+    logError("Form validation failed - cannot submit patient")
+    return
+  }
+  
+  // Additional validation for conditional required fields
+  final age = formValues['age']
+  final gender = formValues['gender']?.toString() ?? ''
+  final ageValue = age is num ? age : (age is String ? int.tryParse(age) : null)
+  
+  // Validate pregnant field for females over 16
+  if (ageValue != null && ageValue > 16 && gender == 'Female') {
+    if (formValues['pregnant'] == null) {
+      logError("Pregnant field is required for females over 16")
+      return
+    }
+  }
+  
+  // Validate prostateHealthy field for males over 50
+  if (ageValue != null && ageValue > 50 && gender == 'Male') {
+    if (formValues['prostateHealthy'] == null) {
+      logError("Prostate Healthy field is required for males over 50")
+      return
+    }
+  }
+  
+  logInfo("Form is valid, preparing to save patient data")
   logInfo("Form values: ${formValues}")
   
   // Queue a database save operation using the database API
-  // The save() function queues the operation and returns an operation ID
-  final saveOpId = save('Customer', formValues)
+  final saveOpId = save('Patient', formValues)
   
-  logInfo("Customer save operation queued with ID: ${saveOpId}")
+  logInfo("Patient save operation queued with ID: ${saveOpId}")
   
-  // Queue a query to get the latest customer (ordered by id desc, limit 1)
-  // This ensures we get the customer that was just saved (with the generated ID)
-  // Note: We use 'id DESC' as orderBy to get the latest customer by ID in descending order
-  final queryOpId = findAll('Customer', {}, 'id DESC', 1)
+  // Queue a query to get the latest patient (ordered by id desc, limit 1)
+  final queryOpId = findAll('Patient', {}, 'id DESC', 1)
   
-  logInfo("Customer query operation queued with ID: ${queryOpId}")
+  logInfo("Patient query operation queued with ID: ${queryOpId}")
   
-  // Store the query operation ID so the saved customer screen can retrieve the result
-  // The saved customer screen will call getDbResult(queryOpId) after operations are processed
-  _savedCustomerQueryId = queryOpId
+  // Store the query operation ID so the saved patient screen can retrieve the result
+  _savedPatientQueryId = queryOpId
   
-  logInfo("Saved customer query operation ID: ${queryOpId}")
-  logInfo("After save completes, use getDbResult(${queryOpId}) to get the saved customer from database")
-  
-  // Note: The database operations will be processed by ActionHandler
-  // after this function completes. Results will be available via getDbResult(saveOpId) 
-  // and getDbResult(queryOpId) in subsequent actions or function calls.
+  logInfo("Saved patient query operation ID: ${queryOpId}")
+  logInfo("After save completes, use getDbResult(${queryOpId}) to get the saved patient from database")
 }
 
-// Load saved customer action - loads the saved customer data into a form
-// This is called by the saved customer screen to populate the read-only form
-fun load_saved_customer() {
-  logInfo("load_saved_customer action called")
+// Load saved patient action - loads the saved patient data into a form
+fun load_saved_patient() {
+  logInfo("load_saved_patient action called")
   
-  if (_savedCustomerQueryId == null) {
-    logError("No saved customer query ID available")
+  if (_savedPatientQueryId == null) {
+    logError("No saved patient query ID available")
     return
   }
   
-  // Get the query result (this should be available after the operations were processed)
-  final queryResult = getDbResult(_savedCustomerQueryId)
+  // Get the query result
+  final queryResult = getDbResult(_savedPatientQueryId)
   
   if (queryResult == null) {
     logError("Query result not available yet")
     return
   }
   
-  logInfo("Loaded saved customer from database: ${queryResult}")
+  logInfo("Loaded saved patient from database: ${queryResult}")
   
-  // Return the customer data so it can be used to populate the form
+  // Return the patient data so it can be used to populate the form
   return queryResult
 }
 
-// Example: Find customer by ID action
-fun find_customer(id) {
-  logInfo("Finding customer with ID: ${id}")
-  
-  // Queue a database query operation
-  final findOpId = findById('Customer', id)
-  
-  logInfo("Customer find operation queued with ID: ${findOpId}")
-  
-  // Return the operation ID so caller can retrieve results later
-  return findOpId
-}
-
-// Example: List all customers action
-fun list_customers(where, orderBy, limit) {
-  logInfo("Listing customers")
-  
-  // Queue a database query operation
-  final listOpId = findAll('Customer', where ?? {}, orderBy, limit)
-  
-  logInfo("Customer list operation queued with ID: ${listOpId}")
-  
-  return listOpId
-}
-
-log("Action definitions loaded successfully")
-logInfo("Actions available: submit_customer, find_customer, list_customers, navigate_customer_view")
-
+log("Patient registration action definitions loaded successfully")
+logInfo("Actions available: start_registration, next_to_health_info, next_to_senior_screening, submit_patient, load_saved_patient")

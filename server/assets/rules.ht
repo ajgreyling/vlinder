@@ -1,49 +1,98 @@
-// Sample Rules Definition - Business Rules and Validation
+// Patient Registration Rules Definition - Business Rules and Validation
 // Demonstrates conditional logic and rule-based behavior
 
 // Logging: Use log(), logInfo(), logWarning(), or logError() to send debug logs
-logInfo("Loading validation rules")
+logInfo("Loading patient registration validation rules")
 
 final validationRules = {
-  email_required: {
+  firstName_required: {
     ruleType: 'Rule',
-    id: 'email_required',
-    name: 'Email Required',
-    condition: 'context.field == "email" && context.value == null',
-    action: 'showError("Email is required")',
+    id: 'firstName_required',
+    name: 'First Name Required',
+    condition: 'context.field == "firstName" && (context.value == null || context.value.toString().isEmpty)',
+    action: 'showError("First name is required")',
+  },
+  lastName_required: {
+    ruleType: 'Rule',
+    id: 'lastName_required',
+    name: 'Last Name Required',
+    condition: 'context.field == "lastName" && (context.value == null || context.value.toString().isEmpty)',
+    action: 'showError("Last name is required")',
+  },
+  age_required: {
+    ruleType: 'Rule',
+    id: 'age_required',
+    name: 'Age Required',
+    condition: 'context.field == "age" && context.value == null',
+    action: 'showError("Age is required")',
   },
   age_valid: {
     ruleType: 'Rule',
     id: 'age_valid',
     name: 'Age Validation',
-    condition: 'context.field == "age" && (context.value < 0 || context.value > 150)',
+    condition: 'context.field == "age" && context.value != null && (context.value < 0 || context.value > 150)',
     action: 'showError("Age must be between 0 and 150")',
+  },
+  gender_required: {
+    ruleType: 'Rule',
+    id: 'gender_required',
+    name: 'Gender Required',
+    condition: 'context.field == "gender" && (context.value == null || context.value.toString().isEmpty)',
+    action: 'showError("Gender is required")',
   },
   email_format: {
     ruleType: 'Rule',
     id: 'email_format',
     name: 'Email Format Validation',
-    condition: 'context.field == "email" && !context.value.contains("@")',
+    condition: 'context.field == "email" && context.value != null && !context.value.toString().contains("@")',
     action: 'showError("Invalid email format")',
+  },
+  weight_valid: {
+    ruleType: 'Rule',
+    id: 'weight_valid',
+    name: 'Weight Validation',
+    condition: 'context.field == "weight" && context.value != null && context.value < 0',
+    action: 'showError("Weight must be positive")',
+  },
+  height_valid: {
+    ruleType: 'Rule',
+    id: 'height_valid',
+    name: 'Height Validation',
+    condition: 'context.field == "height" && context.value != null && context.value < 0',
+    action: 'showError("Height must be positive")',
+  },
+  pregnant_required_female_over_16: {
+    ruleType: 'Rule',
+    id: 'pregnant_required_female_over_16',
+    name: 'Pregnant Required for Females Over 16',
+    condition: 'context.field == "pregnant" && context.formValues["age"] != null && context.formValues["age"] > 16 && context.formValues["gender"] == "Female" && context.value == null',
+    action: 'showError("Pregnant status is required for females over 16")',
+  },
+  prostate_required_male_over_50: {
+    ruleType: 'Rule',
+    id: 'prostate_required_male_over_50',
+    name: 'Prostate Health Required for Males Over 50',
+    condition: 'context.field == "prostateHealthy" && context.formValues["age"] != null && context.formValues["age"] > 50 && context.formValues["gender"] == "Male" && context.value == null',
+    action: 'showError("Prostate health status is required for males over 50")',
   },
 };
 
 log("Validation rules loaded: ${validationRules.keys.length} rules")
 
 final businessRules = {
-  auto_complete_phone: {
+  calculate_age_from_dob: {
     ruleType: 'Rule',
-    id: 'auto_complete_phone',
-    name: 'Auto-complete Phone',
-    condition: 'context.field == "phone" && context.value.length == 10',
-    action: 'formatPhoneNumber(context.value)',
+    id: 'calculate_age_from_dob',
+    name: 'Calculate Age from Date of Birth',
+    condition: 'context.field == "dateOfBirth" && context.value != null && context.formValues["age"] == null',
+    action: 'calculateAge(context.value)',
   },
-  calculate_discount: {
+  auto_format_phone: {
     ruleType: 'Rule',
-    id: 'calculate_discount',
-    name: 'Calculate Discount',
-    condition: 'context.totalAmount > 1000',
-    action: 'applyDiscount(0.1)',
+    id: 'auto_format_phone',
+    name: 'Auto-format Phone Number',
+    condition: 'context.field == "phone" && context.value != null && context.value.toString().length == 10',
+    action: 'formatPhoneNumber(context.value)',
   },
 };
 
@@ -55,4 +104,3 @@ final rules = {
   ...validationRules,
   ...businessRules,
 }
-

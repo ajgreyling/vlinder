@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../binding/drift_binding.dart';
+import '../core/interpreter_provider.dart';
+import 'package:hetu_script/hetu_script.dart';
 
 /// NumberField widget - Numeric input (integer / decimal) bound to Drift field
 /// 
@@ -10,6 +12,7 @@ import '../binding/drift_binding.dart';
 /// - placeholder: String? - Placeholder text
 /// - type: String? - Number type ('integer' or 'decimal', default 'decimal')
 /// - readOnly: bool? - Whether the field is read-only
+/// - visible: String? - Optional Hetu expression for conditional visibility
 class VlinderNumberField extends StatefulWidget {
   final String field;
   final String? label;
@@ -17,6 +20,7 @@ class VlinderNumberField extends StatefulWidget {
   final String? placeholder;
   final String? type; // 'integer' or 'decimal'
   final bool? readOnly;
+  final String? visible; // Hetu expression for conditional visibility
 
   const VlinderNumberField({
     super.key,
@@ -26,6 +30,7 @@ class VlinderNumberField extends StatefulWidget {
     this.placeholder,
     this.type,
     this.readOnly,
+    this.visible,
   });
 
   @override
@@ -107,6 +112,67 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     }
   }
 
+  /// Evaluate visibility expression using Hetu interpreter
+  bool _evaluateVisibility() {
+    if (widget.visible == null || widget.visible!.isEmpty) {
+      return true; // Always visible if no expression provided
+    }
+
+    final formState = FormStateProvider.of(context);
+    if (formState == null) {
+      return true; // Default to visible if no form state
+    }
+
+    final interpreter = HetuInterpreterProvider.of(context);
+    if (interpreter == null) {
+      debugPrint('[VlinderNumberField] WARNING: HetuInterpreterProvider not found, defaulting to visible');
+      return true;
+    }
+
+    try {
+      // Inject form values as context variables
+      final formValues = formState.values;
+      for (final entry in formValues.entries) {
+        final varName = entry.key;
+        final varValue = entry.value;
+        try {
+          interpreter.eval('final $varName = ${_valueToHetuLiteral(varValue)}');
+        } catch (e) {
+          // Skip if variable already exists or can't be set
+        }
+      }
+
+      // Evaluate visibility expression
+      final expressionScript = 'final _visible = ${widget.visible}';
+      interpreter.eval(expressionScript);
+      final result = interpreter.fetch('_visible');
+      
+      if (result is bool) {
+        return result;
+      }
+      
+      return true; // Default to visible if expression doesn't return bool
+    } catch (e) {
+      debugPrint('[VlinderNumberField] Error evaluating visibility expression "${widget.visible}": $e');
+      return true; // Default to visible on error
+    }
+  }
+
+  /// Convert Dart value to Hetu literal string
+  String _valueToHetuLiteral(dynamic value) {
+    if (value == null) {
+      return 'null';
+    } else if (value is String) {
+      return "'$value'";
+    } else if (value is bool) {
+      return value.toString();
+    } else if (value is num) {
+      return value.toString();
+    } else {
+      return "'${value.toString()}'";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final formState = FormStateProvider.of(context);
@@ -115,32 +181,44 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     final isInteger = widget.type == 'integer';
     final isReadOnly = widget.readOnly ?? false;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: _controller,
-        readOnly: isReadOnly,
-        enabled: !isReadOnly,
-        keyboardType: isInteger
-            ? TextInputType.number
-            : const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          labelText: widget.label ?? widget.field,
-          hintText: widget.placeholder,
-          border: const OutlineInputBorder(),
-          errorText: error,
-          suffixIcon: isRequired
-              ? const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text(
-                    '*',
-                    style: TextStyle(color: Colors.red, fontSize: 16),
-                  ),
-                )
-              : null,
-        ),
-        onChanged: isReadOnly ? null : _onChanged,
-      ),
+    // Evaluate visibility reactively
+    return ValueListenableBuilder<Map<String, dynamic>>(
+      valueListenable: formState?.valueNotifier ?? ValueNotifier<Map<String, dynamic>>({}),
+      builder: (context, values, child) {
+        final isVisible = _evaluateVisibility();
+        
+        if (!isVisible) {
+          return const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: TextField(
+            controller: _controller,
+            readOnly: isReadOnly,
+            enabled: !isReadOnly,
+            keyboardType: isInteger
+                ? TextInputType.number
+                : const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: widget.label ?? widget.field,
+              hintText: widget.placeholder,
+              border: const OutlineInputBorder(),
+              errorText: error,
+              suffixIcon: isRequired
+                  ? const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Text(
+                        '*',
+                        style: TextStyle(color: Colors.red, fontSize: 16),
+                      ),
+                    )
+                  : null,
+            ),
+            onChanged: isReadOnly ? null : _onChanged,
+          ),
+        );
+      },
     );
   }
 
@@ -156,6 +234,7 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
     final placeholder = properties['placeholder'] as String?;
     final type = properties['type'] as String?;
     final readOnly = properties['readOnly'] as bool?;
+    final visible = properties['visible'] as String?;
 
     return VlinderNumberField(
       field: field,
@@ -164,6 +243,7 @@ class _VlinderNumberFieldState extends State<VlinderNumberField> {
       placeholder: placeholder,
       type: type,
       readOnly: readOnly,
+      visible: visible,
     );
   }
 }

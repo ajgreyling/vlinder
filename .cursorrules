@@ -161,7 +161,7 @@ final dartValue = WidgetRegistry.htValueToDart(hetuValue);
 ```
 
 ### Parsers
-- Parsers (UIParser, SchemaLoader, WorkflowParser, RulesParser) expect Hetu interpreter to be initialized
+- Parsers (YAMLUIParser for UI, SchemaLoader, WorkflowParser, RulesParser) - YAMLUIParser doesn't require Hetu interpreter, others expect it to be initialized
 - They use `interpreter.fetch()` to get variables after `eval()`
 - They iterate HTStruct using `for (final key in struct.keys)`
 - **CRITICAL**: Always check if constructor functions exist before defining them to prevent "already defined" errors
@@ -210,7 +210,7 @@ fun submit_customer(params) { ... }  // WRONG
 
 ### Database Functions in Hetu Scripts
 - Database functions (`save()`, `query()`, `executeSQL()`, etc.) are **automatically registered** in the Hetu interpreter
-- They are available in all `.ht` files (actions.ht, workflows.ht, rules.ht, etc.)
+- They are available in all `.ht` files (actions.ht, rules.ht, etc.)
 - **CRITICAL**: Database operations use an **async queue pattern**
   - Functions queue operations and return operation IDs immediately
   - Operations are processed by ActionHandler **after** the action function completes
@@ -317,7 +317,7 @@ final interpreter = HetuInterpreterProvider.of(context);
 
 ### Validation Patterns
 - Load .ht files from `sample_app/assets/` directory
-- Use actual parsers (SchemaLoader, UIParser, etc.) for validation
+- Use actual parsers (SchemaLoader, YAMLUIParser, etc.) for validation
 - Check required fields, type consistency, and cross-file references
 - Verify workflow step references and rule condition syntax
 
@@ -352,7 +352,7 @@ Future<void> customStatement(String sql) async {
 ```dart
 debugPrint('[VlinderDatabase] Creating table from schema: ${schema.name}');
 debugPrint('[ContainerAppShell] Starting app initialization');
-debugPrint('[UIParser] Parsing UI script (${scriptContent.length} characters)');
+debugPrint('[YAMLUIParser] Parsing UI YAML (${yamlContent.length} characters)');
 debugPrint('[SchemaLoader] Loaded ${schemas.length} schemas');
 ```
 - Include error context: `debugPrint('[Component] Error: $e'); debugPrint('[Component] Stack trace: $stackTrace');`

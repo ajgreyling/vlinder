@@ -1,0 +1,74 @@
+openapi: 3.0.0
+info:
+  title: Vlinder Schema Definitions
+  version: 1.0.0
+  description: Entity schemas for Patient Registration application
+
+components:
+  schemas:
+    Patient:
+      type: object
+      description: Patient entity with personal and health information
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Primary key identifier
+        firstName:
+          type: string
+          maxLength: 100
+          description: Patient first name
+        lastName:
+          type: string
+          maxLength: 100
+          description: Patient last name
+        dateOfBirth:
+          type: string
+          format: date-time
+          description: Patient date of birth
+        age:
+          type: integer
+          minimum: 0
+          maximum: 150
+          description: Patient age in years
+        gender:
+          type: string
+          maxLength: 20
+          description: Patient gender (Male, Female, Other)
+        email:
+          type: string
+          format: email
+          pattern: '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$'
+          description: Patient email address
+        phone:
+          type: string
+          maxLength: 20
+          description: Patient phone number
+        weight:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Patient weight in kg
+        height:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Patient height in cm
+        pregnant:
+          type: boolean
+          description: Pregnancy status (only for females over 16)
+        prostateHealthy:
+          type: boolean
+          description: Prostate health status (only for males over 50)
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the patient record was created
+          default: now
+      required:
+        - id
+        - firstName
+        - lastName
+        - gender
+        - createdAt
+      x-primary-key: id

@@ -1,103 +1,76 @@
-import 'package:hetu_script/hetu_script.dart';
-import 'package:hetu_script/values.dart';
+import 'package:yaml/yaml.dart';
 import 'package:flutter/foundation.dart';
 import '../binding/drift_binding.dart';
 
-/// Loader for parsing schema.ht files and converting to EntitySchema objects
+/// Result of parsing a property
+class _PropertyParseResult {
+  final SchemaField? field;
+  final String? relationship; // Referenced entity name from $ref
+  final String? foreignKey; // Foreign key reference from x-foreign-key
+
+  _PropertyParseResult({
+    this.field,
+    this.relationship,
+    this.foreignKey,
+  });
+}
+
+/// Loader for parsing schema.yaml files (OpenAPI 3.0 format) and converting to EntitySchema objects
 class SchemaLoader {
-  final Hetu interpreter;
+  SchemaLoader();
 
-  SchemaLoader({required this.interpreter}) {
-    _initializeSchemaConstructors();
-  }
-
-  /// Initialize schema constructor functions in Hetu
-  void _initializeSchemaConstructors() {
-    // Check if functions are already defined to avoid redefinition errors
-    try {
-      interpreter.fetch('defineSchema');
-      // Function already exists, skip definition
-      return;
-    } catch (_) {
-      // Function doesn't exist, proceed with definition
-    }
-
-    final schemaScript = '''
-      fun defineSchema(name, primaryKey, fields) {
-        final result = {
-          schemaType: 'EntitySchema',
-          name: name,
-          primaryKey: primaryKey,
-          fields: fields,
-        }
-        return result
-      }
-      
-      fun defineField(name, type, required, defaultValue, constraints) {
-        final result = {
-          fieldType: 'SchemaField',
-          name: name,
-          type: type,
-          required: required ?? false,
-          defaultValue: defaultValue,
-          constraints: constraints ?? {},
-        }
-        return result
-      }
-    ''';
-
-    try {
-      interpreter.eval(schemaScript);
-    } catch (e) {
-      // Ignore if already defined (shouldn't happen due to check above, but keep for safety)
-      debugPrint('Warning: Failed to initialize schema constructors: $e');
-    }
-  }
-
-  /// Load schemas from schema.ht file content
+  /// Load schemas from schema.yaml file content (OpenAPI 3.0 format)
   /// Returns a map of entity names to EntitySchema objects
-  Map<String, EntitySchema> loadSchemas(String scriptContent) {
+  Map<String, EntitySchema> loadSchemas(String yamlContent) {
     try {
-      // Schema constructors are already defined in constructor, just evaluate user script
-      try {
-        interpreter.eval(scriptContent);
-      } catch (e, stackTrace) {
-        final errorMsg = 'Failed to evaluate schema script: $e';
-        debugPrint('[SchemaLoader] ERROR: $errorMsg');
-        debugPrint('[SchemaLoader] Stack trace: $stackTrace');
-        
-        // Try to extract line number from Hetu error if available
-        String enhancedError = errorMsg;
-        if (e.toString().contains('line') || e.toString().contains('Line')) {
-          enhancedError = '$errorMsg (check line numbers in error message)';
-        }
-        
-        throw FormatException('[SchemaLoader] $enhancedError');
+      final yamlDoc = loadYaml(yamlContent);
+      
+      if (yamlDoc is! Map) {
+        throw FormatException('[SchemaLoader] Expected YAML document to be a Map, got ${yamlDoc.runtimeType}');
       }
 
-      // Extract schema definitions
+      // Check for OpenAPI version
+      if (!yamlDoc.containsKey('openapi')) {
+        throw FormatException('[SchemaLoader] Expected "openapi" key in YAML document (OpenAPI 3.0 format required)');
+      }
+
+      final openapiVersion = yamlDoc['openapi']?.toString();
+      if (openapiVersion != '3.0.0' && openapiVersion != '3.0') {
+        debugPrint('[SchemaLoader] Warning: OpenAPI version is $openapiVersion, expected 3.0.0');
+      }
+
+      // Extract components/schemas section
+      if (!yamlDoc.containsKey('components')) {
+        throw FormatException('[SchemaLoader] Expected "components" key in YAML document');
+      }
+
+      final components = yamlDoc['components'];
+      if (components is! Map) {
+        throw FormatException('[SchemaLoader] Expected "components" to be a Map, got ${components.runtimeType}');
+      }
+
+      if (!components.containsKey('schemas')) {
+        throw FormatException('[SchemaLoader] Expected "components.schemas" key in YAML document');
+      }
+
+      final schemasValue = components['schemas'];
+      if (schemasValue is! Map) {
+        throw FormatException('[SchemaLoader] Expected "components.schemas" to be a Map, got ${schemasValue.runtimeType}');
+      }
+
       final schemas = <String, EntitySchema>{};
-      
-      // Look for schema variables (common patterns: customerSchema, productSchema, etc.)
-      // Or look for a schemas map/object
-      try {
-        final schemasValue = interpreter.fetch('schemas');
-        if (schemasValue is HTStruct) {
-          debugPrint('[SchemaLoader] Found schemas map with ${schemasValue.keys.length} entries');
-          for (final key in schemasValue.keys) {
-            final value = schemasValue[key];
-            if (value is HTStruct) {
-              final schema = _parseSchema(value);
-              if (schema != null) {
-                schemas[schema.name] = schema;
-              }
-            }
+
+      // Parse each schema definition
+      for (final entry in (schemasValue as Map).entries) {
+        final schemaName = entry.key.toString();
+        final schemaData = entry.value;
+        
+        if (schemaData is Map) {
+          final schema = _parseOpenAPISchema(schemaName, schemaData, schemasValue as Map);
+          if (schema != null) {
+            schemas[schema.name] = schema;
           }
         }
-      } catch (e) {
-        debugPrint('[SchemaLoader] Could not fetch "schemas" map, trying individual variables: $e');
-        // Try individual schema variables
-        _extractSchemasFromVariables(schemas);
       }
 
       debugPrint('[SchemaLoader] Successfully loaded ${schemas.length} schemas');
@@ -106,162 +79,226 @@ class SchemaLoader {
       if (e is FormatException && e.message.contains('[SchemaLoader]')) {
         rethrow;
       }
-      final errorMsg = 'Failed to load schemas: $e';
+      final errorMsg = 'Failed to parse OpenAPI schema definition: $e';
       debugPrint('[SchemaLoader] ERROR: $errorMsg');
       debugPrint('[SchemaLoader] Stack trace: $stackTrace');
       throw FormatException('[SchemaLoader] $errorMsg');
     }
   }
 
-  /// Extract schemas from individual variables
-  void _extractSchemasFromVariables(Map<String, EntitySchema> schemas) {
-    // Try common schema variable names
-    final commonNames = ['customerSchema', 'productSchema', 'orderSchema'];
-    
-    for (final name in commonNames) {
-      try {
-        final value = interpreter.fetch(name);
-        if (value is HTStruct) {
-          final schema = _parseSchema(value);
-          if (schema != null) {
-            schemas[schema.name] = schema;
+  /// Parse a single OpenAPI schema definition
+  EntitySchema? _parseOpenAPISchema(String schemaName, Map schemaData, Map allSchemas) {
+    try {
+      // Extract x-primary-key extension
+      String? primaryKey;
+      if (schemaData.containsKey('x-primary-key')) {
+        primaryKey = schemaData['x-primary-key']?.toString();
+      }
+
+      // Extract properties
+      if (!schemaData.containsKey('properties')) {
+        debugPrint('[SchemaLoader] Warning: Schema "$schemaName" has no properties');
+        return null;
+      }
+
+      final properties = schemaData['properties'];
+      if (properties is! Map) {
+        debugPrint('[SchemaLoader] Warning: Schema "$schemaName" properties is not a Map');
+        return null;
+      }
+
+      // Extract required fields
+      final requiredFields = <String>{};
+      if (schemaData.containsKey('required')) {
+        final required = schemaData['required'];
+        if (required is List) {
+          for (final field in required) {
+            requiredFields.add(field.toString());
           }
         }
-      } catch (_) {
-        continue;
-      }
-    }
-
-    // Also try to find any variable ending in 'Schema'
-    // This would require iterating through all variables, which Hetu doesn't directly support
-    // So we rely on the script defining schemas in a known structure
-  }
-
-  /// Parse a schema from HTStruct
-  EntitySchema? _parseSchema(HTStruct struct) {
-    try {
-      // Check if it's a schema definition
-      final schemaType = struct['schemaType'];
-      if (schemaType == null || schemaType.toString() != 'EntitySchema') {
-        // Try to infer from structure
-        if (!struct.containsKey('name') || !struct.containsKey('fields')) {
-          return null;
-        }
       }
 
-      final name = struct['name'].toString();
-      final primaryKey = struct.containsKey('primaryKey') 
-          ? struct['primaryKey'].toString() 
-          : null;
-      
       final fieldsMap = <String, SchemaField>{};
-      
-      // Parse fields
-      final fieldsValue = struct['fields'];
-      if (fieldsValue is HTStruct) {
-        for (final fieldName in fieldsValue.keys) {
-          final fieldValue = fieldsValue[fieldName];
-          if (fieldValue is HTStruct) {
-            final field = _parseField(fieldName, fieldValue);
-            if (field != null) {
-              fieldsMap[field.name] = field;
-            }
+      final relationships = <String, String>{};
+      final foreignKeys = <String, String>{};
+
+      // Parse each property
+      for (final entry in (properties as Map).entries) {
+        final fieldName = entry.key.toString();
+        final propertyData = entry.value;
+        
+        if (propertyData is Map) {
+          final result = _parseProperty(
+            fieldName,
+            propertyData,
+            requiredFields.contains(fieldName),
+            allSchemas,
+          );
+          
+          if (result.field != null) {
+            fieldsMap[fieldName] = result.field!;
+          }
+          
+          if (result.relationship != null) {
+            relationships[fieldName] = result.relationship!;
+          }
+          
+          if (result.foreignKey != null) {
+            foreignKeys[fieldName] = result.foreignKey!;
           }
         }
       }
 
       return EntitySchema(
-        name: name,
+        name: schemaName,
         fields: fieldsMap,
         primaryKey: primaryKey,
+        relationships: relationships,
+        foreignKeys: foreignKeys,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('[SchemaLoader] ERROR: Failed to parse schema "$schemaName": $e');
+      debugPrint('[SchemaLoader] Stack trace: $stackTrace');
       return null;
     }
   }
 
-  /// Parse a field definition from HTStruct
-  SchemaField? _parseField(String fieldName, HTStruct fieldStruct) {
+  /// Parse a property definition from OpenAPI schema
+  _PropertyParseResult _parseProperty(
+    String fieldName,
+    Map propertyData,
+    bool required,
+    Map allSchemas,
+  ) {
     try {
-      // Get field type
-      final type = fieldStruct.containsKey('type')
-          ? fieldStruct['type'].toString()
-          : 'text'; // Default to text
-      
-      final required = fieldStruct.containsKey('required')
-          ? (fieldStruct['required'] is bool
-              ? fieldStruct['required'] as bool
-              : fieldStruct['required'].toString() == 'true')
-          : false;
-      
-      final defaultValue = fieldStruct.containsKey('defaultValue')
-          ? _convertHTValue(fieldStruct['defaultValue'])
-          : null;
-      
-      Map<String, dynamic>? constraints;
-      if (fieldStruct.containsKey('constraints')) {
-        final constraintsValue = fieldStruct['constraints'];
-        if (constraintsValue is HTStruct) {
-          constraints = {};
-          for (final key in constraintsValue.keys) {
-            constraints![key] = _convertHTValue(constraintsValue[key]);
+      String? relationship;
+      String? foreignKey;
+
+      // Check for $ref reference (relationship)
+      if (propertyData.containsKey('\$ref')) {
+        final ref = propertyData['\$ref']?.toString();
+        if (ref != null) {
+          relationship = _resolveRef(ref);
+        }
+      }
+
+      // Check for array with $ref in items (one-to-many relationship)
+      if (propertyData.containsKey('type') && propertyData['type'] == 'array') {
+        final items = propertyData['items'];
+        if (items is Map && items.containsKey('\$ref')) {
+          final ref = items['\$ref']?.toString();
+          if (ref != null) {
+            relationship = _resolveRef(ref);
           }
         }
       }
 
-      return SchemaField(
+      // Check for x-foreign-key extension
+      if (propertyData.containsKey('x-foreign-key')) {
+        foreignKey = propertyData['x-foreign-key']?.toString();
+      }
+
+      // Determine field type
+      String fieldType = 'text'; // Default
+      dynamic defaultValue;
+      final constraints = <String, dynamic>{};
+
+      // If it's a relationship, we still need a base type for the field
+      // For relationships, we'll use 'text' as the base type
+      if (relationship == null) {
+        // Parse type and format
+        final type = propertyData['type']?.toString();
+        final format = propertyData['format']?.toString();
+
+        fieldType = _mapJsonSchemaType(type, format);
+
+        // Extract constraints
+        if (propertyData.containsKey('maxLength')) {
+          constraints['maxLength'] = propertyData['maxLength'];
+        }
+        if (propertyData.containsKey('minimum')) {
+          constraints['min'] = propertyData['minimum'];
+        }
+        if (propertyData.containsKey('maximum')) {
+          constraints['max'] = propertyData['maximum'];
+        }
+        if (propertyData.containsKey('pattern')) {
+          constraints['pattern'] = propertyData['pattern']?.toString();
+        }
+
+        // Extract default value
+        if (propertyData.containsKey('default')) {
+          defaultValue = propertyData['default'];
+        }
+      } else {
+        // For relationships, use text type
+        fieldType = 'text';
+      }
+
+      final field = SchemaField(
         name: fieldName,
-        type: type,
+        type: fieldType,
         required: required,
         defaultValue: defaultValue,
-        constraints: constraints,
+        constraints: constraints.isNotEmpty ? constraints : null,
       );
-    } catch (e) {
-      return null;
+
+      return _PropertyParseResult(
+        field: field,
+        relationship: relationship,
+        foreignKey: foreignKey,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('[SchemaLoader] ERROR: Failed to parse property "$fieldName": $e');
+      debugPrint('[SchemaLoader] Stack trace: $stackTrace');
+      return _PropertyParseResult();
     }
   }
 
-  /// Convert HTValue to Dart value
-  dynamic _convertHTValue(dynamic value) {
-    if (value is String) {
-      return value;
-    } else if (value is int) {
-      return value;
-    } else if (value is double) {
-      return value;
-    } else if (value is bool) {
-      return value;
-    } else if (value == null) {
-      return null;
+  /// Resolve a $ref reference to an entity name
+  /// Handles references like '#/components/schemas/EntityName'
+  String? _resolveRef(String ref) {
+    if (ref.startsWith('#/components/schemas/')) {
+      return ref.substring('#/components/schemas/'.length);
     }
-    return value.toString();
+    // Handle other reference formats if needed
+    debugPrint('[SchemaLoader] Warning: Unsupported $ref format: $ref');
+    return null;
   }
 
-  /// Get schema constructor functions script
-  String _getSchemaConstructorsScript() {
-    return '''
-      fun defineSchema(name, primaryKey, fields) {
-        final result = {
-          schemaType: 'EntitySchema',
-          name: name,
-          primaryKey: primaryKey,
-          fields: fields,
+  /// Map JSON Schema type and format to Vlinder field type
+  String _mapJsonSchemaType(String? type, String? format) {
+    if (type == null) {
+      return 'text';
+    }
+
+    switch (type) {
+      case 'string':
+        if (format == 'date-time') {
+          return 'date';
         }
-        return result
-      }
+        // email, uri, etc. are still text
+        return 'text';
       
-      fun defineField(name, type, required, defaultValue, constraints) {
-        final result = {
-          fieldType: 'SchemaField',
-          name: name,
-          type: type,
-          required: required ?? false,
-          defaultValue: defaultValue,
-          constraints: constraints ?? {},
+      case 'integer':
+        return 'integer';
+      
+      case 'number':
+        if (format == 'decimal') {
+          return 'decimal';
         }
-        return result
-      }
-    ''';
+        return 'decimal'; // Default number to decimal
+      
+      case 'boolean':
+        return 'boolean';
+      
+      case 'array':
+        // Arrays are handled as relationships, but we need a base type
+        return 'text';
+      
+      default:
+        debugPrint('[SchemaLoader] Warning: Unknown JSON Schema type: $type');
+        return 'text';
+    }
   }
 }
-

@@ -1,0 +1,46 @@
+# Patient Registration Workflow Definitions
+# Demonstrates multi-step workflows with conditional transitions
+
+workflows:
+  patient_registration:
+    id: patient_registration
+    label: Patient Registration
+    initialStep: landing
+    steps:
+      landing:
+        id: landing
+        label: Landing
+        screenId: patient_landing
+        nextSteps:
+          - basic_info
+        conditions: {}
+      basic_info:
+        id: basic_info
+        label: Basic Information
+        screenId: patient_basic_info
+        nextSteps:
+          - health_info
+        conditions: {}
+      health_info:
+        id: health_info
+        label: Health Information
+        screenId: patient_health_info
+        nextSteps:
+          - senior_screening
+          - complete
+        conditions:
+          senior_screening: "age > 50"
+          complete: "age <= 50"
+      senior_screening:
+        id: senior_screening
+        label: Senior Health Screening
+        screenId: patient_senior_screening
+        nextSteps:
+          - complete
+        conditions: {}
+      complete:
+        id: complete
+        label: Complete
+        screenId: patient_complete
+        nextSteps: []
+        conditions: {}

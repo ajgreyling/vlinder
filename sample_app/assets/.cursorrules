@@ -2,161 +2,249 @@
 
 ## File Types
 
-Vlinder uses four types of .ht files:
-- `schema.ht` - Entity schema definitions
-- `ui.ht` - UI widget tree definitions
-- `workflows.ht` - Workflow and step definitions
+Vlinder uses two types of .ht files and three YAML files:
+- `schema.yaml` - Entity schema definitions (OpenAPI format)
+- `ui.yaml` - UI widget tree definitions (YAML format)
+- `workflows.yaml` - Workflow and step definitions (YAML format)
 - `rules.ht` - Business rules and validation rules
 
-## Schema Files (schema.ht)
+## Schema Files (schema.yaml)
+
+Schemas are defined in **OpenAPI YAML format** with JSON Schema component definitions. **Relationships between entities are defined using `$ref` references**, allowing entities to reference each other. Foreign key relationships are specified using the `x-foreign-key` extension for database-level constraints.
 
 ### Structure
-- Define entity schemas as struct literals
-- Use variable names ending in `Schema` (e.g., `customerSchema`)
-- Each schema must have: `name`, `primaryKey`, `fields`
+- Use **OpenAPI YAML format** (OpenAPI 3.0 specification)
+- Define schemas in `components/schemas` section
+- Use JSON Schema for field definitions
+- **Use `$ref: '#/components/schemas/EntityName'` references for relationships** - this is the primary way to define entity relationships
+- Use `x-foreign-key: EntityName.field` extension for database foreign keys
 
-### Field Types
-- `'text'` - String/text field
-- `'integer'` - Integer number field
-- `'decimal'` - Decimal/float number field
-- `'date'` - Date field
-- `'boolean'` - Boolean field
+### Field Types (JSON Schema)
+- `string` - String/text field
+- `integer` - Integer number field (use `format: int64` for large integers)
+- `number` - Decimal/float number field (use `format: decimal` for precision)
+- `string` with `format: date-time` - Date/time field
+- `boolean` - Boolean field
+- `array` - Array field (use `items` to specify item type)
 
 ### Example:
-```hetu
-final customerSchema = {
-  name: 'Customer',
-  primaryKey: 'id',
-  fields: {
-    id: {
-      type: 'integer',
-      required: true,
-    },
-    name: {
-      type: 'text',
-      required: true,
-      constraints: {
-        maxLength: 100,
-      },
-    },
-    email: {
-      type: 'text',
-      required: false,
-      constraints: {
-        pattern: '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$',
-      },
-    },
-  },
-};
+```yaml
+openapi: 3.0.0
+info:
+  title: Vlinder Schema Definitions
+  version: 1.0.0
+
+components:
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          pattern: '^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$'
+        age:
+          type: integer
+          minimum: 0
+          maximum: 150
+        phone:
+          type: string
+          maxLength: 20
+        createdAt:
+          type: string
+          format: date-time
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+      required:
+        - id
+        - name
+        - email
+        - createdAt
+    
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customerId:
+          type: integer
+          format: int64
+          x-foreign-key: Customer.id
+        customer:
+          $ref: '#/components/schemas/Customer'
+        total:
+          type: number
+          format: decimal
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - customerId
+        - total
 ```
 
-### Constraints
+### Constraints (JSON Schema)
 - `maxLength` - Maximum string length
-- `min`, `max` - Numeric range
+- `minimum`, `maximum` - Numeric range
 - `pattern` - Regex pattern for validation
+- `format` - Data format (email, date-time, decimal, int64, etc.)
 
-## UI Files (ui.ht)
+### Relationships Using References
+- **One-to-Many**: Use `type: array` with `items: $ref: '#/components/schemas/EntityName'` to reference another schema
+- **Many-to-One**: Use `$ref: '#/components/schemas/EntityName'` directly in a property to reference another schema
+- **Foreign Keys**: Use `x-foreign-key: EntityName.field` extension for database relationships (works alongside `$ref` references)
+- **Many-to-Many**: Use a junction table schema with `$ref` references and foreign keys to both entities
+
+### Key Features
+- **Industry Standard**: Uses OpenAPI 3.0 and JSON Schema specifications
+- **Dual Database Support**: Works for both PostgreSQL and SQLite/Drift
+- **Relationship Support**: `$ref` references enable complex entity relationships
+- **Foreign Key Mapping**: `x-foreign-key` extension maps to database foreign keys
+
+## UI Files (ui.yaml)
 
 ### Structure
-- Must define a `screen` variable using `Screen()` function
+- Must define a `screen` key at the root level
 - Screen contains `children` array with widgets
-- Forms use `Form()` with `entity` and `fields` array
+- Forms use `widgetType: Form` with `entity` and `fields` array
+- All widgets must have a `widgetType` property
 
 ### Available Widgets
-- `Screen(id, title, children)` - Root screen container
-- `Form(entity, fields, children)` - Form container with entity binding
-- `TextField(field, label, required, placeholder)` - Text input field
-- `NumberField(field, label, type, required, placeholder)` - Numeric input field
-- `ActionButton(label, action, style)` - Action button
+- `Screen` - Root screen container
+- `Form` - Form container with entity binding
+- `TextField` - Text input field
+- `NumberField` - Numeric input field (integer or decimal)
+- `BooleanField` - Boolean input field (Yes/No dropdown)
+- `ActionButton` - Action button
+- `Text` - Text display widget
 
 ### Example:
-```hetu
-final screen = Screen(
-  id: 'customer_form',
-  title: 'Customer Registration',
-  children: [
-    Form(
-      entity: 'Customer',
-      fields: [
-        TextField(
-          field: 'name',
-          label: 'Customer Name',
-          required: true,
-          placeholder: 'Enter customer name',
-        ),
-        NumberField(
-          field: 'age',
-          label: 'Age',
-          type: 'integer',
-          placeholder: 'Enter age',
-        ),
-      ],
-    ),
-    ActionButton(
-      label: 'Submit',
-      action: 'submit_customer',
-      style: 'primary',
-    ),
-  ],
-);
+```yaml
+patientHealthInfo:
+  widgetType: Screen
+  id: patient_health_info
+  title: Health Information
+  children:
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: TextField
+          field: firstName
+          label: First Name
+          required: true
+          placeholder: Enter first name
+        - widgetType: NumberField
+          field: age
+          label: Age
+          type: integer
+          required: true
+          placeholder: Enter age
+        - widgetType: BooleanField
+          field: pregnant
+          label: Pregnant?
+          required: true
+          visible: "age > 16 && gender == 'Female'"
+    - widgetType: ActionButton
+      label: Next
+      action: next_to_senior_screening
+      style: primary
 ```
 
 ### Widget Properties
+- `widgetType` - Widget type identifier (required for all widgets)
 - `id` - Unique identifier (required for Screen)
 - `title` - Display title (Screen)
 - `entity` - Entity name for form binding (Form)
-- `field` - Field name from schema (TextField, NumberField)
+- `field` - Field name from schema (TextField, NumberField, BooleanField)
 - `label` - Display label
 - `required` - Boolean for required fields
 - `placeholder` - Placeholder text
-- `type` - Field type: 'integer' or 'decimal' (NumberField)
+- `type` - Field type: `integer` or `decimal` (NumberField)
+- `visible` - Hetu expression for conditional visibility (TextField, NumberField, BooleanField)
+- `readOnly` - Boolean for read-only fields
 - `action` - Action identifier (ActionButton)
-- `style` - Button style: 'primary' or 'secondary' (ActionButton)
+- `style` - Button style: `primary` or `secondary` (ActionButton)
+- `text` - Text content (Text widget)
 
-## Workflow Files (workflows.ht)
+### Conditional Field Visibility
+
+Fields can be conditionally shown or hidden using the `visible` property with Hetu script expressions:
+
+```yaml
+- widgetType: BooleanField
+  field: pregnant
+  label: Pregnant?
+  required: true
+  visible: "age > 16 && gender == 'Female'"
+```
+
+**Key Points:**
+- `visible` property accepts a Hetu script expression string
+- Expression is evaluated against current form values
+- Expression must evaluate to a boolean (`true` = visible, `false` = hidden)
+- Fields are hidden by returning `SizedBox.shrink()` when not visible
+- Visibility updates reactively as form values change using `ValueListenableBuilder`
+- Form values are injected as variables into the Hetu interpreter for evaluation
+- Example expressions:
+  - `"age > 16 && gender == 'Female'"` - Show for females over 16
+  - `"age > 50 && gender == 'Male'"` - Show for males over 50
+  - `"age != null"` - Show when age is set
+
+## Workflow Files (workflows.yaml)
 
 ### Structure
-- Define workflows as struct literals
-- Use variable names ending in `Workflow` (e.g., `customerRegistrationWorkflow`)
+- Define workflows in YAML format under a `workflows` key
 - Each workflow has: `id`, `label`, `initialStep`, `steps`
+- Workflows are defined as a map with workflow IDs as keys
 
 ### Step Structure
-- Each step has: `id`, `label`, `screenId`, `nextSteps`
-- `nextSteps` is an array of step IDs
-- Empty `nextSteps` array indicates final step
+- Each step has: `id`, `label`, `screenId`, `nextSteps`, `conditions`
+- `nextSteps` is a list of step IDs
+- `conditions` is a map (can be empty: `{}`)
+- Empty `nextSteps` list indicates final step
 
 ### Example:
-```hetu
-final customerRegistrationWorkflow = {
-  workflowType: 'Workflow',
-  id: 'customer_registration',
-  label: 'Customer Registration',
-  initialStep: 'personal_info',
-  steps: {
-    personal_info: {
-      stepType: 'WorkflowStep',
-      id: 'personal_info',
-      label: 'Personal Information',
-      screenId: 'customer_registration',
-      nextSteps: ['review'],
-    },
-    review: {
-      stepType: 'WorkflowStep',
-      id: 'review',
-      label: 'Review',
-      screenId: 'review_screen',
-      nextSteps: ['submit'],
-    },
-    submit: {
-      stepType: 'WorkflowStep',
-      id: 'submit',
-      label: 'Submit',
-      screenId: 'submit_screen',
-      nextSteps: [],
-    },
-  },
-};
+```yaml
+workflows:
+  patient_registration:
+    id: patient_registration
+    label: Patient Registration
+    initialStep: landing
+    steps:
+      health_info:
+        id: health_info
+        label: Health Information
+        screenId: patient_health_info
+        nextSteps:
+          - senior_screening
+          - complete
+        conditions:
+          senior_screening: "age > 50"
+          complete: "age <= 50"
+      senior_screening:
+        id: senior_screening
+        label: Senior Health Screening
+        screenId: patient_senior_screening
+        nextSteps:
+          - complete
+        conditions: {}
 ```
+
+**Conditional Transitions:**
+- Use `conditions` map to define when steps should be shown
+- Conditions are Hetu expressions evaluated against form values
+- Multiple `nextSteps` with conditions allow branching logic
 
 ## Rules Files (rules.ht)
 
@@ -183,22 +271,27 @@ final customerRegistrationWorkflow = {
 ### Example:
 ```hetu
 final validationRules = {
-  email_required: {
+  firstName_required: {
     ruleType: 'Rule',
-    id: 'email_required',
-    name: 'Email Required',
-    condition: 'context.field == "email" && context.value == null',
-    action: 'showError("Email is required")',
+    id: 'firstName_required',
+    name: 'First Name Required',
+    condition: 'context.field == "firstName" && (context.value == null || context.value.toString().isEmpty)',
+    action: 'showError("First name is required")',
   },
-  age_valid: {
+  pregnant_required_female_over_16: {
     ruleType: 'Rule',
-    id: 'age_valid',
-    name: 'Age Validation',
-    condition: 'context.field == "age" && (context.value < 0 || context.value > 150)',
-    action: 'showError("Age must be between 0 and 150")',
+    id: 'pregnant_required_female_over_16',
+    name: 'Pregnant Required for Females Over 16',
+    condition: 'context.field == "pregnant" && context.formValues["age"] != null && context.formValues["age"] > 16 && context.formValues["gender"] == "Female" && context.value == null',
+    action: 'showError("Pregnant status is required for females over 16")',
   },
 };
 ```
+
+**Conditional Validation:**
+- Rules can access other form values via `context.formValues["fieldName"]`
+- Use conditional logic to apply rules based on multiple field values
+- Combine with `visible` property in UI for consistent conditional behavior
 
 ## Hetu Script Syntax
 
@@ -273,7 +366,7 @@ Run `./scripts/test_and_validate.sh` to validate all .ht files:
 
 ### Validation Checks
 - Schema files: Required fields (`name`, `primaryKey`, `fields`), valid field types
-- UI files: `screen` variable exists, Form `entity` matches Schema names
+- UI files: `screen` key exists in YAML, Form `entity` matches Schema names, valid YAML syntax
 - Workflow files: `initialStep` exists, all `nextSteps` references valid
 - Rules files: Condition syntax can be evaluated, action syntax valid
 
@@ -283,4 +376,45 @@ Run `./scripts/test_and_validate.sh` to validate all .ht files:
 - Workflow `screenId` doesn't match Screen `id`
 - Field names in widgets don't match schema field names
 - Rule conditions have syntax errors
+- Invalid YAML syntax in `ui.yaml` (indentation, missing colons, etc.)
+- Missing `widgetType` property on widgets
+- Conditional visibility expressions not evaluating correctly (check form values are set)
+- BooleanField not showing/hiding when expected (verify `visible` expression syntax)
+- Conditional required fields not validating (ensure rules match visibility conditions)
+
+## Actions Files (actions.ht)
+
+### Structure
+- Define action functions using `fun` keyword
+- Actions have NO parameters - `actionContext` is injected automatically
+- Access form values via `actionContext.formValues`
+- Access validation state via `actionContext.isValid`
+
+### Example:
+```hetu
+fun submit_patient() {
+  final formValues = actionContext.formValues ?? {}
+  final isValid = actionContext.isValid ?? false
+  
+  if (!isValid) {
+    logError("Form validation failed")
+    return
+  }
+  
+  // Save to database
+  final saveOpId = save('Patient', formValues)
+}
+```
+
+### Navigation Actions
+- Use `navigate_` prefix for string-based navigation
+- Or implement custom navigation logic in action functions
+- Validate form state before navigation
+- Use conditional logic to skip steps based on form values
+
+### Key Points
+- Actions are Hetu script functions with NO parameters
+- `actionContext` is automatically injected by ActionHandler
+- Database operations are queued and processed after action completes
+- Use `getDbResult(opId)` to retrieve database operation results
 

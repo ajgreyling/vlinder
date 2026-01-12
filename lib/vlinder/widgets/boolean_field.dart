@@ -3,7 +3,7 @@ import '../binding/drift_binding.dart';
 import '../core/interpreter_provider.dart';
 import 'package:hetu_script/hetu_script.dart';
 
-/// TextField widget - Free-form text input bound to Drift field
+/// BooleanField widget - Boolean input (true/false) bound to Drift field
 /// 
 /// Properties:
 /// - field: String - Name of the schema field
@@ -12,7 +12,7 @@ import 'package:hetu_script/hetu_script.dart';
 /// - placeholder: String? - Placeholder text
 /// - readOnly: bool? - Whether the field is read-only
 /// - visible: String? - Optional Hetu expression for conditional visibility
-class VlinderTextField extends StatefulWidget {
+class VlinderBooleanField extends StatefulWidget {
   final String field;
   final String? label;
   final bool? required;
@@ -20,7 +20,7 @@ class VlinderTextField extends StatefulWidget {
   final bool? readOnly;
   final String? visible; // Hetu expression for conditional visibility
 
-  const VlinderTextField({
+  const VlinderBooleanField({
     super.key,
     required this.field,
     this.label,
@@ -31,19 +31,36 @@ class VlinderTextField extends StatefulWidget {
   });
 
   @override
-  State<VlinderTextField> createState() => _VlinderTextFieldState();
+  State<VlinderBooleanField> createState() => _VlinderBooleanFieldState();
+
+  /// Create from properties map (used by widget registry)
+  static Widget fromProperties(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final field = properties['field'] as String? ?? 'field';
+    final label = properties['label'] as String?;
+    final required = properties['required'] as bool?;
+    final placeholder = properties['placeholder'] as String?;
+    final readOnly = properties['readOnly'] as bool?;
+    final visible = properties['visible'] as String?;
+
+    return VlinderBooleanField(
+      field: field,
+      label: label,
+      required: required,
+      placeholder: placeholder,
+      readOnly: readOnly,
+      visible: visible,
+    );
+  }
 }
 
-class _VlinderTextFieldState extends State<VlinderTextField> {
-  late final TextEditingController _controller;
+class _VlinderBooleanFieldState extends State<VlinderBooleanField> {
   FormStateManager? _formState;
   bool _listenerAdded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-  }
+  bool? _value;
 
   @override
   void didChangeDependencies() {
@@ -57,7 +74,7 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
       // Load initial value from form state if available
       final value = formState.getValue(widget.field);
       if (value != null) {
-        _controller.text = value.toString();
+        _value = value is bool ? value : (value.toString().toLowerCase() == 'true');
       }
       
       // Listen to form state changes
@@ -71,7 +88,6 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
     if (_formState != null && _listenerAdded) {
       _formState!.valueNotifier.removeListener(_onFormStateChanged);
     }
-    _controller.dispose();
     super.dispose();
   }
 
@@ -79,16 +95,22 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
     final formState = FormStateProvider.of(context);
     if (formState != null) {
       final value = formState.getValue(widget.field);
-      if (_controller.text != value?.toString()) {
-        _controller.text = value?.toString() ?? '';
+      final boolValue = value is bool ? value : (value?.toString().toLowerCase() == 'true');
+      if (_value != boolValue) {
+        setState(() {
+          _value = boolValue;
+        });
       }
     }
   }
 
-  void _onChanged(String value) {
+  void _onChanged(bool? value) {
     final formState = FormStateProvider.of(context);
     if (formState != null) {
       formState.setValue(widget.field, value);
+      setState(() {
+        _value = value;
+      });
     }
   }
 
@@ -105,7 +127,7 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
 
     final interpreter = HetuInterpreterProvider.of(context);
     if (interpreter == null) {
-      debugPrint('[VlinderTextField] WARNING: HetuInterpreterProvider not found, defaulting to visible');
+      debugPrint('[VlinderBooleanField] WARNING: HetuInterpreterProvider not found, defaulting to visible');
       return true;
     }
 
@@ -133,7 +155,7 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
       
       return true; // Default to visible if expression doesn't return bool
     } catch (e) {
-      debugPrint('[VlinderTextField] Error evaluating visibility expression "${widget.visible}": $e');
+      debugPrint('[VlinderBooleanField] Error evaluating visibility expression "${widget.visible}": $e');
       return true; // Default to visible on error
     }
   }
@@ -172,53 +194,57 @@ class _VlinderTextFieldState extends State<VlinderTextField> {
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: TextField(
-            controller: _controller,
-            readOnly: isReadOnly,
-            enabled: !isReadOnly,
-            decoration: InputDecoration(
-              labelText: widget.label ?? widget.field,
-              hintText: widget.placeholder,
-              border: const OutlineInputBorder(),
-              errorText: error,
-              suffixIcon: isRequired
-                  ? const Padding(
-                      padding: EdgeInsets.all(8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.label ?? widget.field,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ),
+                  if (isRequired)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8.0),
                       child: Text(
                         '*',
                         style: TextStyle(color: Colors.red, fontSize: 16),
                       ),
-                    )
-                  : null,
-            ),
-            onChanged: isReadOnly ? null : _onChanged,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<bool>(
+                      value: _value,
+                      decoration: InputDecoration(
+                        hintText: widget.placeholder ?? 'Select',
+                        border: const OutlineInputBorder(),
+                        errorText: error,
+                      ),
+                      items: const [
+                        DropdownMenuItem<bool>(
+                          value: true,
+                          child: Text('Yes'),
+                        ),
+                        DropdownMenuItem<bool>(
+                          value: false,
+                          child: Text('No'),
+                        ),
+                      ],
+                      onChanged: isReadOnly ? null : _onChanged,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
     );
   }
-
-  /// Create from properties map (used by widget registry)
-  static Widget fromProperties(
-    BuildContext context,
-    Map<String, dynamic> properties,
-    List<Widget>? children,
-  ) {
-    final field = properties['field'] as String? ?? 'field';
-    final label = properties['label'] as String?;
-    final required = properties['required'] as bool?;
-    final placeholder = properties['placeholder'] as String?;
-    final readOnly = properties['readOnly'] as bool?;
-    final visible = properties['visible'] as String?;
-
-    return VlinderTextField(
-      field: field,
-      label: label,
-      required: required,
-      placeholder: placeholder,
-      readOnly: readOnly,
-      visible: visible,
-    );
-  }
 }
-
