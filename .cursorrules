@@ -152,6 +152,27 @@ final runtime = VlinderRuntime();
 final widget = runtime.loadUI(scriptContent, context);
 ```
 
+### Screen Navigation from UI YAML
+- **CRITICAL**: Screens are loaded from UI YAML by screen ID using `parseScreenById()` and `loadScreenById()`
+- `YAMLUIParser.parseScreenById(yamlContent, screenId)` - Parses a specific screen from YAML by matching `id` field
+- `VlinderRuntime.loadScreenById(yamlContent, screenId, context)` - Loads and builds a screen widget
+- Screen IDs in UI YAML must match the `id` field in screen definitions:
+```yaml
+patientBasicInfo:
+  widgetType: Screen
+  id: patient_basic_info  # This is the screen ID used in navigate()
+  title: Basic Information
+```
+- Navigation loads screens dynamically and wraps them with necessary providers (`HetuInterpreterProvider`, `DatabaseAPIProvider`, `UIYAMLProvider`)
+- Example:
+```dart
+// In ActionHandler._navigateToScreenById()
+final uiYamlContent = UIYAMLProvider.of(context!);
+final runtime = VlinderRuntime(interpreter: hetuInterpreter);
+final screenWidget = runtime.loadScreenById(uiYamlContent, screenId, context!);
+```
+- **CRITICAL**: Loaded screens must be wrapped with providers so they have access to interpreter, database, and UI YAML content
+
 ### Widget Registry
 - All widgets must be registered in `WidgetRegistry`
 - Use `WidgetRegistry.htValueToDart()` to convert Hetu values to Dart types
@@ -159,6 +180,29 @@ final widget = runtime.loadUI(scriptContent, context);
 ```dart
 final dartValue = WidgetRegistry.htValueToDart(hetuValue);
 ```
+
+### UIYAMLProvider
+- **CRITICAL**: `UIYAMLProvider` makes UI YAML content accessible throughout the widget tree
+- Required for screen navigation - ActionHandler needs UI YAML content to load screens by ID
+- Wrap loaded UI with `UIYAMLProvider` in `ContainerAppShell.build()`:
+```dart
+return DatabaseAPIProvider(
+  databaseAPI: _databaseAPI,
+  child: HetuInterpreterProvider(
+    interpreter: _interpreter,
+    child: UIYAMLProvider(
+      uiYamlContent: _uiYamlContent!,
+      child: _loadedUI!,
+    ),
+  ),
+);
+```
+- Access UI YAML content in widgets/action handlers:
+```dart
+final uiYamlContent = UIYAMLProvider.of(context);
+```
+- **CRITICAL**: Store UI YAML content in `ContainerAppShell` after fetching assets: `_uiYamlContent = assets['ui.yaml']`
+- UI YAML content is needed for dynamic screen loading during navigation
 
 ### Parsers
 - Parsers (YAMLUIParser for UI, SchemaLoader, WorkflowParser, RulesParser) - YAMLUIParser doesn't require Hetu interpreter, others expect it to be initialized
@@ -189,6 +233,17 @@ void _initializeConstructors() {
 final handler = ActionHandler(interpreter: hetu);
 await handler.executeAction('actionName', params: {...});
 ```
+- **CRITICAL**: Action context merges accumulated form values with current form values
+  - `_prepareActionContext()` merges `_patientFormValues` (accumulated) with `formState.values` (current)
+  - Current form values take precedence (allows updates)
+  - This enables multi-step forms where actions need access to previous screen data
+- **CRITICAL**: Navigation requests are processed after action execution
+  - `_processNavigationRequest()` checks for `_navigationRequest` variable after action completes
+  - Current form values are saved to `_patientFormValues` before navigation
+  - Navigation loads screen from UI YAML using `loadScreenById()`
+- **CRITICAL**: Database functions initialization must include `_patientFormValues`
+  - Initialize in both `ContainerAppShell._registerDatabaseFunctions()` and `ActionHandler._ensureDatabaseFunctionsAvailable()`
+  - Variable must exist before actions try to access it (e.g., `start_registration` clearing it)
 
 ### Action Functions (actions.ht)
 - **REQUIRED**: `actions.ht` file must exist and be loaded for app initialization
@@ -207,6 +262,34 @@ fun submit_customer() {
 // INCORRECT - Don't define parameters
 fun submit_customer(params) { ... }  // WRONG
 ```
+
+### Navigation in Action Functions
+- **CRITICAL**: Use `navigate(screenId)` function to navigate between screens
+- Navigation function is automatically registered in Hetu interpreter
+- Navigation requests are processed **after** action execution completes
+- Screen IDs must match the `id` field in UI YAML screen definitions
+- Example:
+```hetu
+fun start_registration() {
+  logInfo("Starting registration")
+  // Clear accumulated form values for new registration
+  _patientFormValues = {}
+  // Navigate to basic info screen
+  navigate("patient_basic_info")
+}
+
+fun next_to_health_info() {
+  // Validate form first
+  if (!actionContext.isValid) {
+    logError("Form validation failed")
+    return
+  }
+  // Navigate to next screen
+  navigate("patient_health_info")
+}
+```
+- **CRITICAL**: Navigation happens asynchronously - don't expect immediate screen change
+- Navigation is processed by ActionHandler after action completes and database operations are processed
 
 ### Database Functions in Hetu Scripts
 - Database functions (`save()`, `query()`, `executeSQL()`, etc.) are **automatically registered** in the Hetu interpreter
@@ -227,6 +310,44 @@ fun submit_customer() {
 ```
 - All database functions use the **same interpreter instance** (shared via HetuInterpreterProvider)
 - Functions are registered in `ContainerAppShell._registerDatabaseFunctions()`
+
+### Form Value Accumulation (Multi-Step Forms)
+- **CRITICAL**: For multi-step forms spanning multiple screens, form values are accumulated in `_patientFormValues`
+- This variable is automatically initialized in both `ContainerAppShell` and `ActionHandler`
+- **CRITICAL**: `_patientFormValues` must be initialized in both places:
+  - `ContainerAppShell._registerDatabaseFunctions()` - initializes on app startup
+  - `ActionHandler._ensureDatabaseFunctionsAvailable()` - initializes when ActionHandler creates functions
+- Form values from previous screens are automatically merged with current form values in action context
+- Current form values take precedence over accumulated values (allows updates)
+- Example:
+```hetu
+fun start_registration() {
+  // Clear accumulated values when starting new registration
+  _patientFormValues = {}
+  navigate("patient_basic_info")
+}
+
+fun next_to_health_info() {
+  // Current form values (from Basic Info) are automatically saved to _patientFormValues
+  // before navigation happens
+  navigate("patient_health_info")
+}
+
+fun next_to_senior_screening() {
+  // actionContext.formValues now includes:
+  // - All values from Basic Info screen (firstName, lastName, age, etc.)
+  // - All values from Health Info screen (weight, height, pregnant)
+  final age = actionContext.formValues['age'] // Available from Basic Info!
+  if (age > 50) {
+    navigate("patient_senior_screening")
+  } else {
+    submit_patient()
+  }
+}
+```
+- **CRITICAL**: Always clear `_patientFormValues = {}` when starting a new multi-step form
+- Form values are saved to accumulated values automatically before navigation
+- Action context merges accumulated + current values, so actions have access to all previous form data
 
 ### Database Operation Processing
 - **CRITICAL**: Operations queued from Hetu scripts are `HTStruct`, not `Map`
@@ -297,7 +418,7 @@ final interpreter = HetuInterpreterProvider.of(context);
 
 - `lib/vlinder/runtime/` - Runtime engine and action handlers
 - `lib/vlinder/parser/` - Parsers for .ht files
-- `lib/vlinder/core/` - Core utilities (WidgetRegistry)
+- `lib/vlinder/core/` - Core utilities (WidgetRegistry, HetuInterpreterProvider, DatabaseAPIProvider, UIYAMLProvider)
 - `lib/vlinder/widgets/` - Vlinder SDK widgets
 - `lib/vlinder/schema/` - Schema loading and parsing
 - `lib/vlinder/workflow/` - Workflow engine and parsing
@@ -492,4 +613,13 @@ onFormStateReady: (formState) {
 27. **Use string keys for HTStruct** - Convert numeric keys to strings when storing: `"${key}"`, access with strings: `struct["1"]`
 28. **Form widgets wrap themselves** - FormStateProvider should wrap the form content, not just children, to make state available to siblings
 29. **Defer setState during build** - Use `WidgetsBinding.instance.addPostFrameCallback()` to avoid setState() during build errors
+30. **Store UI YAML content** - ContainerAppShell must store `_uiYamlContent` after fetching assets for navigation to work
+31. **Wrap UI with UIYAMLProvider** - Loaded UI must be wrapped with UIYAMLProvider so ActionHandler can access YAML content for screen loading
+32. **Initialize _patientFormValues** - Must be initialized in both ContainerAppShell and ActionHandler database function initialization
+33. **Clear accumulated values on new form** - Always clear `_patientFormValues = {}` when starting a new multi-step form
+34. **Use navigate() for screen navigation** - Action functions should call `navigate(screenId)` to trigger navigation, not rely on string-based handlers
+35. **Screen IDs must match** - Screen IDs in `navigate()` calls must match the `id` field in UI YAML screen definitions
+36. **Navigation is async** - Navigation happens after action execution completes, don't expect immediate screen change
+37. **Form values accumulate automatically** - Form values from previous screens are automatically available in action context via merging
+38. **Save values before navigation** - Current form values are automatically saved to `_patientFormValues` before navigation occurs
 

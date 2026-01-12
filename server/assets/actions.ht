@@ -10,6 +10,9 @@ var _savedPatientQueryId = null
 // Start registration action - navigates to basic info screen
 fun start_registration() {
   logInfo("start_registration action called")
+  // Clear accumulated form values to start fresh
+  _patientFormValues = {}
+  logInfo("Cleared accumulated form values for new registration")
   // Navigate to patient basic info screen
   navigate("patient_basic_info")
 }

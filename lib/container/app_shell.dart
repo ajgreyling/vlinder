@@ -291,6 +291,9 @@ class _ContainerAppShellState extends State<ContainerAppShell> {
       var _dbResults = {}
       var _dbOperationId = 0
       
+      // Accumulated form values across screens (for multi-step forms)
+      var _patientFormValues = {}
+      
       // Execute raw SQL statement
       fun executeSQL(sql, params) {
         final opId = _dbOperationId++

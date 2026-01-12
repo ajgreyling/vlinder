@@ -220,9 +220,33 @@ class ActionHandler {
   }
 
   /// Prepare action context with form values and other data
+  /// Merges current form values with accumulated values from previous screens
   Map<String, dynamic> _prepareActionContext(Map<String, dynamic>? params) {
+    // Get current form values
+    final currentFormValues = formState?.values ?? {};
+    
+    // Get accumulated form values from Hetu interpreter (if they exist)
+    Map<String, dynamic> accumulatedValues = {};
+    try {
+      final accumulated = interpreter.fetch('_patientFormValues');
+      if (accumulated is Map) {
+        accumulatedValues = Map<String, dynamic>.from(accumulated);
+      } else if (accumulated is HTStruct) {
+        // Convert HTStruct to Map
+        for (final key in accumulated.keys) {
+          accumulatedValues[key.toString()] = accumulated[key];
+        }
+      }
+    } catch (e) {
+      // _patientFormValues doesn't exist yet, start fresh
+      debugPrint('[ActionHandler] No accumulated form values found, starting fresh');
+    }
+    
+    // Merge accumulated values with current form values (current takes precedence)
+    final mergedValues = <String, dynamic>{...accumulatedValues, ...currentFormValues};
+    
     final context = <String, dynamic>{
-      'formValues': formState?.values ?? {},
+      'formValues': mergedValues,
       'isValid': formState?.isValid ?? false,
     };
 
@@ -362,6 +386,7 @@ class ActionHandler {
   
   /// Process navigation request from Hetu script
   /// Checks for _navigationRequest variable and navigates if set
+  /// Also saves current form values to accumulated values before navigating
   void _processNavigationRequest() {
     if (context == null || !context!.mounted) {
       return;
@@ -371,6 +396,54 @@ class ActionHandler {
       final navigationRequest = interpreter.fetch('_navigationRequest');
       if (navigationRequest != null && navigationRequest is String) {
         debugPrint('[ActionHandler] Processing navigation request to screen: $navigationRequest');
+        
+        // Save current form values to accumulated values before navigating
+        if (formState != null && formState!.values.isNotEmpty) {
+          try {
+            // Get existing accumulated values
+            Map<String, dynamic> accumulatedValues = {};
+            try {
+              final accumulated = interpreter.fetch('_patientFormValues');
+              if (accumulated is Map) {
+                accumulatedValues = Map<String, dynamic>.from(accumulated);
+              } else if (accumulated is HTStruct) {
+                for (final key in accumulated.keys) {
+                  accumulatedValues[key.toString()] = accumulated[key];
+                }
+              }
+            } catch (_) {
+              // No existing accumulated values, start fresh
+            }
+            
+            // Merge current form values into accumulated values
+            final mergedValues = <String, dynamic>{...accumulatedValues, ...formState!.values};
+            
+            // Store back in Hetu interpreter
+            final valuesScript = StringBuffer();
+            valuesScript.writeln('_patientFormValues = {');
+            for (final entry in mergedValues.entries) {
+              final key = entry.key;
+              final value = entry.value;
+              if (value is String) {
+                valuesScript.writeln('  "$key": "$value",');
+              } else if (value is num) {
+                valuesScript.writeln('  "$key": $value,');
+              } else if (value is bool) {
+                valuesScript.writeln('  "$key": $value,');
+              } else if (value == null) {
+                valuesScript.writeln('  "$key": null,');
+              } else {
+                valuesScript.writeln('  "$key": "${value.toString()}",');
+              }
+            }
+            valuesScript.writeln('}');
+            
+            interpreter.eval(valuesScript.toString());
+            debugPrint('[ActionHandler] Saved form values to accumulated values: ${formState!.values.keys.join(", ")}');
+          } catch (e) {
+            debugPrint('[ActionHandler] WARNING: Could not save form values: $e');
+          }
+        }
         
         // Clear the navigation request
         interpreter.eval('_navigationRequest = null');
@@ -616,6 +689,14 @@ class ActionHandler {
         debugPrint('[ActionHandler] _dbOperationId not found, initializing...');
         interpreter.eval('var _dbOperationId = 0');
       }
+      
+      // Ensure _patientFormValues exists (for multi-step form value accumulation)
+      try {
+        interpreter.fetch('_patientFormValues');
+      } catch (_) {
+        debugPrint('[ActionHandler] _patientFormValues not found, initializing...');
+        interpreter.eval('var _patientFormValues = {}');
+      }
     } else {
       // Database functions don't exist (or not found), initialize them
       debugPrint('[ActionHandler] Database functions not found, initializing...');
@@ -659,6 +740,14 @@ class ActionHandler {
         interpreter.fetch('_dbOperationId');
       } catch (_) {
         interpreter.eval('var _dbOperationId = 0');
+      }
+      
+      // Check and initialize _patientFormValues (for multi-step form value accumulation)
+      try {
+        interpreter.fetch('_patientFormValues');
+      } catch (_) {
+        interpreter.eval('var _patientFormValues = {}');
+        debugPrint('[ActionHandler] Initialized _patientFormValues');
       }
       
       // Check each function individually before defining to avoid redefinition errors
