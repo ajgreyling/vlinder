@@ -615,7 +615,7 @@ onFormStateReady: (formState) {
 
 ### Conditional Visibility Expressions
 - **CRITICAL**: Visibility expressions have access to **both** accumulated form values (`_patientFormValues`) and current form values
-- Field widgets (`VlinderTextField`, `VlinderBooleanField`, `VlinderNumberField`) merge accumulated + current values before evaluating visibility
+- Field widgets (`VlinderTextField`, `VlinderBooleanField`, `VlinderNumberField`, `VlinderSingleSelectField`) merge accumulated + current values before evaluating visibility
 - Current form values take precedence over accumulated values (allows updates)
 - This enables multi-step forms where fields on later screens can reference values from earlier screens
 - Example:

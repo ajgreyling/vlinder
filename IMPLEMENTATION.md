@@ -28,6 +28,8 @@ This implementation provides a Hetu script-based UI composition system for Flutt
 - **Form**: Data capture container with entity binding
 - **TextField**: Text input with schema-aware validation
 - **NumberField**: Numeric input (integer/decimal) with validation
+- **BooleanField**: Boolean input (Yes/No dropdown)
+- **SingleSelectField**: Single-choice dropdown selection
 - **ActionButton**: Button that triggers Hetu script actions
 
 ### 5. Runtime Engine (`lib/vlinder/runtime/vlinder_runtime.dart`)

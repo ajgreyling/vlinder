@@ -82,10 +82,31 @@ Defines the visual layout and user interactions across multiple screens in YAML 
 - **Multiple Screens** - Landing, Basic Info, Health Info, Senior Screening
 - **Screen Widget** - Top-level container with title and navigation
 - **Form Widget** - Data capture container bound to entity schema
-- **Input Fields** - `TextField`, `NumberField`, `BooleanField` with labels and placeholders
+- **Input Fields** - `TextField`, `NumberField`, `BooleanField`, `SingleSelectField` with labels and placeholders
 - **Conditional Visibility** - Fields shown/hidden based on form values using `visible` property
 - **Action Buttons** - Primary and secondary actions for navigation and submission
 - **Text Display** - Headline text with styling options
+
+**Example with SingleSelectField:**
+```yaml
+patientBasicInfo:
+  widgetType: Screen
+  id: patient_basic_info
+  title: Basic Information
+  children:
+    - widgetType: Form
+      entity: Patient
+      fields:
+        - widgetType: SingleSelectField
+          field: gender
+          label: Gender
+          required: true
+          placeholder: Select gender
+          options:
+            - Male
+            - Female
+            - Other
+```
 
 **Example with Conditional Visibility:**
 ```yaml
@@ -275,7 +296,7 @@ When the app loads, you should see:
    - Last Name (required)
    - Date of Birth
    - Age (required, integer)
-   - Gender (required)
+   - Gender (required, SingleSelectField with options: Male, Female, Other)
    - Email Address
    - Phone Number
    - "Next" button

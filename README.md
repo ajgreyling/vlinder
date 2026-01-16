@@ -170,7 +170,7 @@ Core building blocks for enterprise data capture.
 - **Repeater** — Repeatable sub-form for collections
 - **ReadOnlyView** — Display-only view bound to schema data
 
-#### 3️⃣ Input Fields (10)
+#### 3️⃣ Input Fields (11)
 
 Schema-aware, validated, event-emitting fields.
 
@@ -179,6 +179,7 @@ Schema-aware, validated, event-emitting fields.
 - **DateField** — Date selection
 - **TimeField** — Time selection
 - **BooleanField** — Yes / No input
+- **SingleSelectField** — Single-choice dropdown selection
 - **ChoiceField** — Single-choice (enum)
 - **MultiChoiceField** — Multiple-choice selection
 - **LookupField** — Reference to another entity

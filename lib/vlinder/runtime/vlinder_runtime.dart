@@ -8,6 +8,7 @@ import '../widgets/form.dart';
 import '../widgets/text_field.dart';
 import '../widgets/number_field.dart';
 import '../widgets/boolean_field.dart';
+import '../widgets/single_select_field.dart';
 import '../widgets/action_button.dart';
 import '../../container/debug_logger.dart';
 
@@ -53,6 +54,8 @@ class VlinderRuntime {
     debugPrint('[VlinderRuntime] Registered: NumberField');
     registry.register('BooleanField', _buildBooleanField);
     debugPrint('[VlinderRuntime] Registered: BooleanField');
+    registry.register('SingleSelectField', _buildSingleSelectField);
+    debugPrint('[VlinderRuntime] Registered: SingleSelectField');
 
     // Actions & Feedback
     registry.register('ActionButton', VlinderActionButton.fromProperties);
@@ -133,6 +136,31 @@ class VlinderRuntime {
       placeholder: placeholder,
       readOnly: readOnly,
       visible: visible,
+    );
+  }
+
+  /// Build SingleSelectField widget from properties
+  static Widget _buildSingleSelectField(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final field = properties['field'] as String? ?? 'field';
+    final label = properties['label'] as String?;
+    final required = properties['required'] as bool?;
+    final placeholder = properties['placeholder'] as String?;
+    final readOnly = properties['readOnly'] as bool?;
+    final visible = properties['visible'] as String?;
+    final options = properties['options'] as List<dynamic>?;
+
+    return VlinderSingleSelectField(
+      field: field,
+      label: label,
+      required: required,
+      placeholder: placeholder,
+      readOnly: readOnly,
+      visible: visible,
+      options: options,
     );
   }
 

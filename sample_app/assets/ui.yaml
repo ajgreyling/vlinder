@@ -56,11 +56,15 @@ patientBasicInfo:
           type: integer
           required: true
           placeholder: Enter age
-        - widgetType: TextField
+        - widgetType: SingleSelectField
           field: gender
           label: Gender
           required: true
-          placeholder: Male, Female, or Other
+          placeholder: Select gender
+          options:
+            - Male
+            - Female
+            - Other
         - widgetType: TextField
           field: email
           label: Email Address
