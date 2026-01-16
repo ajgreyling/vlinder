@@ -86,7 +86,7 @@ fun next_to_senior_screening() {
   }
   
   if (ageValue == null) {
-    logError("Invalid age value")
+    logError("Invalid age value - must be a number")
     return
   }
   
