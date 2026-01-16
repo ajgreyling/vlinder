@@ -46,10 +46,10 @@ patientBasicInfo:
           label: Last Name
           required: true
           placeholder: Enter last name
-        - widgetType: TextField
+        - widgetType: DateField
           field: dateOfBirth
           label: Date of Birth
-          placeholder: YYYY-MM-DD
+          placeholder: Select date
         - widgetType: NumberField
           field: age
           label: Age

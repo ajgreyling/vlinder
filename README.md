@@ -540,6 +540,8 @@ Vlinder exposes a database API to Hetu scripts, allowing `.ht` files to interact
 
 **Important:** Database operations use an **async queue pattern** - they are queued during script execution and processed asynchronously by `ActionHandler` after action completion.
 
+**CRITICAL:** Database functions must **always** be registered in the interpreter, regardless of `databaseAPI` availability. In `ActionHandler.executeAction()`, `_ensureDatabaseFunctionsAvailable()` must be called unconditionally before action execution, because actions may reference database functions even if they don't process database operations. Database operation processing (not registration) is conditional on `databaseAPI != null`.
+
 **Available Database Functions:**
 
 All database functions are registered automatically and available in Hetu scripts:
@@ -600,6 +602,10 @@ fun submit_customer() {
 **Key Points:**
 
 - Database functions (`save()`, `query()`, etc.) are **automatically available** - no import needed
+- **CRITICAL**: Functions must **always** be registered in the interpreter, even if `databaseAPI` is null
+  - `ActionHandler._ensureDatabaseFunctionsAvailable()` is called unconditionally in `executeAction()`
+  - Functions exist for actions to reference, even if operations won't be processed
+  - Only database operation processing is conditional on `databaseAPI != null`
 - Functions **queue operations** and return operation IDs immediately
 - Operations are **processed asynchronously** after the action function completes
 - Use `getDbResult(opId)` to retrieve results in **subsequent actions or function calls**

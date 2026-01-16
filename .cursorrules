@@ -325,6 +325,11 @@ fun next_to_health_info() {
 ### Database Functions in Hetu Scripts
 - Database functions (`save()`, `query()`, `executeSQL()`, etc.) are **automatically registered** in the Hetu interpreter
 - They are available in all `.ht` files (actions.ht, rules.ht, etc.)
+- **CRITICAL**: Database functions must **always** be registered in the interpreter, regardless of `databaseAPI` availability
+  - `ActionHandler._ensureDatabaseFunctionsAvailable()` must be called unconditionally in `executeAction()`
+  - Functions must exist even if `databaseAPI` is null, because actions may reference them
+  - Database operation processing (not registration) is conditional on `databaseAPI != null`
+  - Example: `_ensureDatabaseFunctionsAvailable()` should be called before checking `databaseAPI != null` for processing
 - **CRITICAL**: Database operations use an **async queue pattern**
   - Functions queue operations and return operation IDs immediately
   - Operations are processed by ActionHandler **after** the action function completes
@@ -340,7 +345,22 @@ fun submit_customer() {
 }
 ```
 - All database functions use the **same interpreter instance** (shared via HetuInterpreterProvider)
-- Functions are registered in `ContainerAppShell._registerDatabaseFunctions()`
+- Functions are registered in `ContainerAppShell._registerDatabaseFunctions()` and `ActionHandler._ensureDatabaseFunctionsAvailable()`
+- **CRITICAL**: In `ActionHandler.executeAction()`, always call `_ensureDatabaseFunctionsAvailable()` unconditionally:
+```dart
+// CORRECT - Always ensure functions exist
+_ensureDatabaseFunctionsAvailable();
+
+// Process operations only if databaseAPI is available
+if (databaseAPI != null) {
+  await _processDatabaseOperations();
+}
+
+// INCORRECT - Don't conditionally register functions
+if (databaseAPI != null) {
+  _ensureDatabaseFunctionsAvailable(); // WRONG - functions won't exist if databaseAPI is null
+}
+```
 
 ### Form Value Accumulation (Multi-Step Forms)
 - **CRITICAL**: For multi-step forms spanning multiple screens, form values are accumulated in `_patientFormValues`
@@ -651,8 +671,10 @@ onFormStateReady: (formState) {
 17. **Access InheritedWidgets correctly** - Use `didChangeDependencies()` or `build()`, never `initState()`
 18. **Define action functions with NO parameters** - ActionHandler injects `actionContext` automatically
 19. **Database functions are automatically available** - No import needed, they're registered in ContainerAppShell
-20. **Database operations are async** - Functions queue operations, results available via `getDbResult(opId)` after processing
-21. **actions.ht is required** - Must exist and be loaded for app initialization
+20. **Database functions must always be registered** - Call `_ensureDatabaseFunctionsAvailable()` unconditionally in `ActionHandler.executeAction()`, regardless of `databaseAPI` availability
+21. **Database operations are async** - Functions queue operations, results available via `getDbResult(opId)` after processing
+22. **Database operation processing is conditional** - Only process operations when `databaseAPI != null`, but always register functions
+23. **actions.ht is required** - Must exist and be loaded for app initialization
 22. **Use actionContext in action functions** - Access form values via `actionContext.formValues` and validation via `actionContext.isValid`
 23. **Handle HTStruct in database operations** - Operations from Hetu are HTStruct, check for both Map and HTStruct when processing
 24. **Convert HTStruct to Dart types** - Always use `_convertHetuValueToDart()` before passing to database API

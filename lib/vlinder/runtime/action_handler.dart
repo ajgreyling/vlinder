@@ -45,9 +45,8 @@ class ActionHandler {
       
       // Ensure database functions are available BEFORE injecting action context
       // This is critical because action context injection or actions may reference database functions
-      if (databaseAPI != null) {
-        _ensureDatabaseFunctionsAvailable();
-      }
+      // Functions must exist in the interpreter even if databaseAPI is null (for actions that don't use DB)
+      _ensureDatabaseFunctionsAvailable();
       
       // Prepare action context
       final actionContext = _prepareActionContext(params);

@@ -9,6 +9,7 @@ import '../widgets/text_field.dart';
 import '../widgets/number_field.dart';
 import '../widgets/boolean_field.dart';
 import '../widgets/single_select_field.dart';
+import '../widgets/date_field.dart';
 import '../widgets/action_button.dart';
 import '../../container/debug_logger.dart';
 
@@ -56,6 +57,8 @@ class VlinderRuntime {
     debugPrint('[VlinderRuntime] Registered: BooleanField');
     registry.register('SingleSelectField', _buildSingleSelectField);
     debugPrint('[VlinderRuntime] Registered: SingleSelectField');
+    registry.register('DateField', _buildDateField);
+    debugPrint('[VlinderRuntime] Registered: DateField');
 
     // Actions & Feedback
     registry.register('ActionButton', VlinderActionButton.fromProperties);
@@ -161,6 +164,29 @@ class VlinderRuntime {
       readOnly: readOnly,
       visible: visible,
       options: options,
+    );
+  }
+
+  /// Build DateField widget from properties
+  static Widget _buildDateField(
+    BuildContext context,
+    Map<String, dynamic> properties,
+    List<Widget>? children,
+  ) {
+    final field = properties['field'] as String? ?? 'field';
+    final label = properties['label'] as String?;
+    final required = properties['required'] as bool?;
+    final placeholder = properties['placeholder'] as String?;
+    final readOnly = properties['readOnly'] as bool?;
+    final visible = properties['visible'] as String?;
+
+    return VlinderDateField(
+      field: field,
+      label: label,
+      required: required,
+      placeholder: placeholder,
+      readOnly: readOnly,
+      visible: visible,
     );
   }
 

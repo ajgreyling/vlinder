@@ -30,6 +30,9 @@ dependencies:
   # YAML parser for UI definitions
   yaml: ^3.1.2
   
+  # Date formatting (required for DateField widget)
+  intl: ^0.17.0
+  
   # Device info for logging
   device_info_plus: ^9.1.0
   

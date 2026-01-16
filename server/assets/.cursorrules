@@ -126,6 +126,7 @@ components:
 - `TextField` - Text input field
 - `NumberField` - Numeric input field (integer or decimal)
 - `BooleanField` - Boolean input field (Yes/No dropdown)
+- `SingleSelectField` - Single-choice dropdown selection
 - `ActionButton` - Action button
 - `Text` - Text display widget
 
@@ -150,6 +151,15 @@ patientHealthInfo:
           type: integer
           required: true
           placeholder: Enter age
+        - widgetType: SingleSelectField
+          field: gender
+          label: Gender
+          required: true
+          placeholder: Select gender
+          options:
+            - Male
+            - Female
+            - Other
         - widgetType: BooleanField
           field: pregnant
           label: Pregnant?
@@ -166,12 +176,15 @@ patientHealthInfo:
 - `id` - Unique identifier (required for Screen)
 - `title` - Display title (Screen)
 - `entity` - Entity name for form binding (Form)
-- `field` - Field name from schema (TextField, NumberField, BooleanField)
+- `field` - Field name from schema (TextField, NumberField, BooleanField, SingleSelectField)
 - `label` - Display label
 - `required` - Boolean for required fields
 - `placeholder` - Placeholder text
 - `type` - Field type: `integer` or `decimal` (NumberField)
-- `visible` - Hetu expression for conditional visibility (TextField, NumberField, BooleanField)
+- `options` - List of options for dropdown (SingleSelectField). Can be:
+  - List of strings: `['Male', 'Female', 'Other']` (value = label)
+  - List of maps: `[{value: 'M', label: 'Male'}, ...]` (explicit value/label)
+- `visible` - Hetu expression for conditional visibility (TextField, NumberField, BooleanField, SingleSelectField)
 - `readOnly` - Boolean for read-only fields
 - `action` - Action identifier (ActionButton)
 - `style` - Button style: `primary` or `secondary` (ActionButton)
